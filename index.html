@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Automatically redirect to trailing slash on GitHub Pages if accessed without one
+      // This prevents relative asset paths (base: "./") from resolving incorrectly to 404 / blank screen
+      if (window.location.hostname.endsWith('.github.io')) {
+        var path = window.location.pathname;
+        if (path && !path.endsWith('/') && !path.split('/').pop().includes('.')) {
+          window.location.replace(window.location.href + '/');
+        }
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Groundwater Compliance Reporting Engine</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Phosphor Icons -->
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/css/phosphor.css" />
+
+    <!-- Global fonts and visual styling -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
+
