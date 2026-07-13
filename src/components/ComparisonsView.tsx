@@ -57,6 +57,7 @@ export default function ComparisonsView({
 
     headers.params.forEach((paramName) => {
       const configKey = headerMap[paramName];
+      if (configKey === "CO3" || configKey === "HCO3" || configKey === "Na" || configKey === "K") return;
       const config = PARAM_CONFIG[configKey];
       if (!config) return;
 

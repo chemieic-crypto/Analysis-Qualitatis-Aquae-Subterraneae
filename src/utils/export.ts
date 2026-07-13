@@ -449,6 +449,10 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
   // Post-process all tables to make them simple MS Word tables (allowing easy drag-resizing of height/width)
   const tables = Array.from(div.getElementsByTagName("table"));
   tables.forEach((table) => {
+    // Remove all cols and colgroups to let MS Word handle autofit and resizing natively
+    const cols = Array.from(table.querySelectorAll("col, colgroup"));
+    cols.forEach((c) => c.parentNode?.removeChild(c));
+
     // Force standard border and padding attributes for Word compatibility
     table.setAttribute("border", "1");
     table.setAttribute("cellpadding", "5");
@@ -470,6 +474,7 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
     cells.forEach((cell) => {
       cell.removeAttribute("width");
       cell.removeAttribute("height");
+      cell.classList.remove("whitespace-nowrap");
       
       const cellStyle = cell.getAttribute("style") || "";
       const cleanedCellStyle = cellStyle
@@ -480,6 +485,7 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
         .replace(/min-height\s*:[^;]+;?/gi, "")
         .replace(/max-height\s*:[^;]+;?/gi, "")
         .replace(/line-height\s*:[^;]+;?/gi, "")
+        .replace(/white-space\s*:[^;]+;?/gi, "")
         .replace(/padding\s*:[^;]+;?/gi, "") // Allow cell padding to be natively driven
         .replace(/display\s*:[^;]+;?/gi, "");
 
@@ -559,6 +565,8 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
     text-align: center;
     vertical-align: middle;
     font-size: 10pt;
+    white-space: normal !important;
+    word-break: break-word;
   }
   th {
     background-color: #f1f5f9;

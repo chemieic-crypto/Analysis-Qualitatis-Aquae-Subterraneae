@@ -225,6 +225,7 @@ export default function App() {
       latitude: find(["Latitude", "Lat", "Y"]),
       year: find(["Year", "year"]),
       season: find(["Season", "season"]),
+      aquifer: find(["Aquifer", "Aquifer Type", "Aquifer_Type", "Aquifer Name", "Aquifer_Name"]),
       params: [],
     };
 

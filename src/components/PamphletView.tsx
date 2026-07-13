@@ -676,6 +676,9 @@ export default function PamphletView({
         const blockCol = headers && headers.block ? headers.block : null;
         const blockVal = blockCol && row[blockCol] !== undefined && row[blockCol] !== null ? String(row[blockCol]).trim() : "-";
 
+        const aquiferCol = headers && headers.aquifer ? headers.aquifer : null;
+        const aquiferVal = aquiferCol && row[aquiferCol] !== undefined && row[aquiferCol] !== null ? String(row[aquiferCol]).trim() : "-";
+
         const hasSAR = ca !== null && mg !== null && na !== null;
         const sar = hasSAR && (meq.Ca + meq.Mg > 0) ? (meq.Na / Math.sqrt((meq.Ca + meq.Mg) / 2)) : null;
 
@@ -689,6 +692,7 @@ export default function PamphletView({
         return {
           locName,
           block: blockVal,
+          aquifer: aquiferVal,
           meqPerc,
           facies,
           hasFacies,
@@ -734,7 +738,12 @@ export default function PamphletView({
       const pNaHCO3Val = parseFloat(getFaciesPct(faciesCounts["Na-HCO3 Type"]));
       const pCaCl2Val = parseFloat(getFaciesPct(faciesCounts["Ca-Cl Type"]));
 
-      const uniqueBlocks = Array.from(new Set(validFaciesSamples.map(s => s.block).filter(b => b && b !== "-")));
+      const hasAquiferCol = !!(headers && headers.aquifer);
+
+      const uniqueBlocks = hasAquiferCol
+        ? Array.from(new Set(validFaciesSamples.map(s => s.aquifer).filter(a => a && a !== "-")))
+        : Array.from(new Set(validFaciesSamples.map(s => s.block).filter(b => b && b !== "-")));
+
       const blockColorPalette = [
         "#2563eb", // Blue
         "#ea580c", // Orange
@@ -784,9 +793,10 @@ export default function PamphletView({
             </div>
           `;
         });
+        const legendLabel = hasAquiferCol ? "Aquifer Type" : "Block";
         return `
           <div style="text-align: center; margin: 12px auto; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc; max-width: 500px;">
-            <p style="margin: 0 0 6px 0; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; font-weight: bold;">Legend: 3D Bubbles Colored by Block (Size: 0.3)</p>
+            <p style="margin: 0 0 6px 0; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; font-weight: bold;">Legend: 3D Bubbles Colored by ${legendLabel} (Size: 0.3)</p>
             <div style="display: flex; flex-wrap: wrap; justify-content: center;">
               ${itemsHtml}
             </div>
@@ -847,7 +857,8 @@ export default function PamphletView({
           const xd = 0.5 * (xa + xc) + (ya - yc) / (2 * SQRT3);
           const yd = SQRT3 * (xd - xc) + yc;
 
-          const blockId = getBlockId(d.block || "-");
+          const groupVal = hasAquiferCol ? (d.aquifer || "-") : (d.block || "-");
+          const blockId = getBlockId(groupVal);
           const fillVal = `url(#bubble-${blockId})`;
 
           pointsMarkup += `
@@ -1004,7 +1015,8 @@ export default function PamphletView({
 
           const cx = getX(r);
           const cy = getY(t);
-          const blockId = getBlockId(s.block || "-");
+          const groupVal = hasAquiferCol ? (s.aquifer || "-") : (s.block || "-");
+          const blockId = getBlockId(groupVal);
 
           pointsSvg += `
             <circle cx="${cx}" cy="${cy}" r="3.0" fill="url(#bubble-${blockId})" filter="url(#bubble-shadow)" stroke="#ffffff" stroke-width="0.3" />
@@ -1149,7 +1161,8 @@ export default function PamphletView({
 
           const cx = getX(ec);
           const cy = getY(sar);
-          const blockId = getBlockId(s.block || "-");
+          const groupVal = hasAquiferCol ? (s.aquifer || "-") : (s.block || "-");
+          const blockId = getBlockId(groupVal);
 
           pointsSvg += `
             <circle cx="${cx}" cy="${cy}" r="3.0" fill="url(#bubble-${blockId})" filter="url(#bubble-shadow)" stroke="#ffffff" stroke-width="0.3" />
@@ -1438,6 +1451,11 @@ export default function PamphletView({
         `;
       }
 
+      let textParaFaciesAgricultural = "";
+      if (totalValidFacies > 0) {
+        textParaFaciesAgricultural = `<strong>Piper, USSL & Irrigation Water Quality Indices Analysis:</strong> The hydrogeochemical facies analysis classifies the primary groundwater chemical characteristics. Based on the Piper trilinear diagram, the dominant groundwater type in the region is identified as <strong>${dominantFaciesName}</strong>, representing primary geogenic paths and active rock-water interactions. For irrigation suitability, the <strong>Sodium Adsorption Ratio (SAR)</strong> shows that sodicity hazard is primarily within safe ranges across monitored zones, which minimizes clay dispersion risks. Simultaneously, the <strong>Residual Sodium Carbonate (RSC)</strong> assessment highlights potential alkali hazards and soil alkalization risks. When integrated into the <strong>U.S. Salinity Laboratory (USSL)</strong> grid, these metrics specify salinity-sodicity categories (such as C1S1, C2S1, C3S1) and determine the overall suitability of the water for agricultural irrigation.`;
+      }
+
       // Assemble final HTML
       const finalHTML = `
         <div style="font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; background-color: #ffffff; padding: 25px; border-radius: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
@@ -1526,9 +1544,32 @@ export default function PamphletView({
               <p style="margin-bottom: 16px;">${textParaCompliance}</p>
               <p style="margin-bottom: 16px;">${textPara2}</p>
               ${textParaHeavy ? `<p style="margin-bottom: 16px;">${textParaHeavy}</p>` : ""}
+              ${textParaFaciesAgricultural ? `<p style="margin-bottom: 16px;">${textParaFaciesAgricultural}</p>` : ""}
               <p style="margin-bottom: 16px;">${textPara3}</p>
               <p style="margin-bottom: 16px;">${textPara4}</p>
             </div>
+
+            <!-- Gibbs Diagrams (Water-Rock Interaction Mechanism) -->
+            ${totalValidFacies > 0 ? `
+            <div style="margin-top: 35px; margin-bottom: 35px; page-break-inside: avoid;">
+              <h4 style="font-weight: 900; color: #1e3a8a; font-size: 16px; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 15px;">Gibbs Diagram (Water-Rock Interaction Mechanism)</h4>
+              <p style="color: #475569; font-size: 14px; line-height: 1.5; margin-bottom: 20px; text-align: justify;">
+                The Gibbs diagrams represent the relationship between water chemistry and aquifer lithology. They plot TDS against Na/(Na+Ca) or Cl/(Cl+HCO3) to determine whether the chemistry of groundwater is governed by <strong>Precipitation Dominance</strong>, <strong>Rock-Weathering Dominance</strong>, or <strong>Evaporation Dominance</strong>.
+              </p>
+              <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin: 25px 0;">
+                <div style="flex: 1; min-width: 260px; max-width: 300px; text-align: center;">
+                  ${generateGibbsDiagramHTML("cation", "Gibbs Cation Diagram", validFaciesSamples)}
+                </div>
+                <div style="flex: 1; min-width: 260px; max-width: 300px; text-align: center;">
+                  ${generateGibbsDiagramHTML("anion", "Gibbs Anion Diagram", validFaciesSamples)}
+                </div>
+              </div>
+              ${generateBlockLegendHTML()}
+              <p style="text-align: center; font-style: italic; font-size: 11px; margin-top: 6px; color: #475569; font-weight: bold; margin-bottom: 30px;">
+                Figure 5: Gibbs Cation and Anion Diagrams showing Geochemical Mechanisms in ${regionName}
+              </p>
+            </div>
+            ` : ""}
 
             <!-- Compliances Chart -->
             <div style="background-color: transparent; border-radius: 16px; padding: 20px; display: block; margin: 0 auto 30px auto; max-width: 100%; border: none;">

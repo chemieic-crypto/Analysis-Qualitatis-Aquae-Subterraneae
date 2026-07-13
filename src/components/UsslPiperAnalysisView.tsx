@@ -427,6 +427,7 @@ export default function UsslPiperAnalysisView({
           longitude: columnMapping.Lng || undefined,
           year: columnMapping.Year || undefined,
           season: columnMapping.Season || undefined,
+          aquifer: columnMapping.Aquifer || undefined,
           params: [] as string[]
         };
 
@@ -3024,7 +3025,7 @@ export default function UsslPiperAnalysisView({
       {processedData.length > 0 || !["ussl", "piper", "gibbs"].includes(viewMode) ? (
         ["ussl", "piper", "gibbs"].includes(viewMode) ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
-            <div className="lg:col-span-8 space-y-6">
+            <div className={`${viewMode === "gibbs" ? "lg:col-span-12" : "lg:col-span-8"} space-y-6`}>
               {/* Aqueous Styling, Color-by & 3D Settings Panel */}
               <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-4 justify-between">
@@ -3387,155 +3388,156 @@ export default function UsslPiperAnalysisView({
               )}
             </div>
 
-            {/* Sidebar Donut Charts & Statistical Breakdowns */}
-            <div className="lg:col-span-4 space-y-6">
-              {(() => {
-                const isUsslComparisonActive = usslCompareBy !== "none" && usslLeftVal && usslRightVal;
-                const isPiperComparisonActive = piperCompareBy !== "none" && piperLeftVal && piperRightVal;
-                const isComparisonActive = viewMode === "ussl" ? isUsslComparisonActive : isPiperComparisonActive;
+            {viewMode !== "gibbs" && (
+              <div className="lg:col-span-4 space-y-6">
+                {(() => {
+                  const isUsslComparisonActive = usslCompareBy !== "none" && usslLeftVal && usslRightVal;
+                  const isPiperComparisonActive = piperCompareBy !== "none" && piperLeftVal && piperRightVal;
+                  const isComparisonActive = viewMode === "ussl" ? isUsslComparisonActive : isPiperComparisonActive;
 
-                if (isComparisonActive) {
-                  return (
-                    <div className="space-y-6">
-                      <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-                        <h4 className="text-xs font-black uppercase text-indigo-700 tracking-wider">
-                          Comparison Donut Charts
-                        </h4>
-                        <div className="grid grid-cols-1 gap-4">
-                          {viewMode === "ussl" ? (
-                            <>
-                              <DonutChart
-                                data={leftStats.ussl}
-                                colors={usslColors}
-                                sizes={usslSizes}
-                                onColorChange={(k, c) => setUsslColors((p) => ({ ...p, [k]: c }))}
-                                onSizeChange={(k, s) => setUsslSizes((p) => ({ ...p, [k]: s }))}
-                                defaultTitle={`${usslLeftVal} - USSL Classes`}
-                              />
-                              <DonutChart
-                                data={rightStats.ussl}
-                                colors={usslColors}
-                                sizes={usslSizes}
-                                onColorChange={(k, c) => setUsslColors((p) => ({ ...p, [k]: c }))}
-                                onSizeChange={(k, s) => setUsslSizes((p) => ({ ...p, [k]: s }))}
-                                defaultTitle={`${usslRightVal} - USSL Classes`}
-                              />
-                            </>
-                          ) : (
-                            <>
-                              <DonutChart
-                                data={leftStats.facies}
-                                colors={faciesColors}
-                                sizes={faciesSizes}
-                                onColorChange={(k, c) => setFaciesColors((p) => ({ ...p, [k]: c }))}
-                                onSizeChange={(k, s) => setFaciesSizes((p) => ({ ...p, [k]: s }))}
-                                onNameChange={(k, n) => setFaciesNames((p) => ({ ...p, [k]: n }))}
-                                defaultTitle={`${piperLeftVal} - Water Hydro-Facies`}
-                              />
-                              <DonutChart
-                                data={rightStats.facies}
-                                colors={faciesColors}
-                                sizes={faciesSizes}
-                                onColorChange={(k, c) => setFaciesColors((p) => ({ ...p, [k]: c }))}
-                                onSizeChange={(k, s) => setFaciesSizes((p) => ({ ...p, [k]: s }))}
-                                onNameChange={(k, n) => setFaciesNames((p) => ({ ...p, [k]: n }))}
-                                defaultTitle={`${piperRightVal} - Water Hydro-Facies`}
-                              />
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Class distribution comparison table */}
-                      <div className="bg-white p-5 rounded-[2.5rem] border border-slate-200 shadow-lg space-y-4">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
-                            Distribution Comparison Table
+                  if (isComparisonActive) {
+                    return (
+                      <div className="space-y-6">
+                        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                          <h4 className="text-xs font-black uppercase text-indigo-700 tracking-wider">
+                            Comparison Donut Charts
                           </h4>
-                          <p className="text-[10px] text-slate-400 font-bold mt-0.5">
-                            Total samples and percentage comparison
-                          </p>
+                          <div className="grid grid-cols-1 gap-4">
+                            {viewMode === "ussl" ? (
+                              <>
+                                <DonutChart
+                                  data={leftStats.ussl}
+                                  colors={usslColors}
+                                  sizes={usslSizes}
+                                  onColorChange={(k, c) => setUsslColors((p) => ({ ...p, [k]: c }))}
+                                  onSizeChange={(k, s) => setUsslSizes((p) => ({ ...p, [k]: s }))}
+                                  defaultTitle={`${usslLeftVal} - USSL Classes`}
+                                />
+                                <DonutChart
+                                  data={rightStats.ussl}
+                                  colors={usslColors}
+                                  sizes={usslSizes}
+                                  onColorChange={(k, c) => setUsslColors((p) => ({ ...p, [k]: c }))}
+                                  onSizeChange={(k, s) => setUsslSizes((p) => ({ ...p, [k]: s }))}
+                                  defaultTitle={`${usslRightVal} - USSL Classes`}
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <DonutChart
+                                  data={leftStats.facies}
+                                  colors={faciesColors}
+                                  sizes={faciesSizes}
+                                  onColorChange={(k, c) => setFaciesColors((p) => ({ ...p, [k]: c }))}
+                                  onSizeChange={(k, s) => setFaciesSizes((p) => ({ ...p, [k]: s }))}
+                                  onNameChange={(k, n) => setFaciesNames((p) => ({ ...p, [k]: n }))}
+                                  defaultTitle={`${piperLeftVal} - Water Hydro-Facies`}
+                                />
+                                <DonutChart
+                                  data={rightStats.facies}
+                                  colors={faciesColors}
+                                  sizes={faciesSizes}
+                                  onColorChange={(k, c) => setFaciesColors((p) => ({ ...p, [k]: c }))}
+                                  onSizeChange={(k, s) => setFaciesSizes((p) => ({ ...p, [k]: s }))}
+                                  onNameChange={(k, n) => setFaciesNames((p) => ({ ...p, [k]: n }))}
+                                  defaultTitle={`${piperRightVal} - Water Hydro-Facies`}
+                                />
+                              </>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="overflow-hidden rounded-xl border border-slate-200">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead className="bg-slate-50 text-slate-600 font-bold text-[10px] tracking-wider border-b border-slate-200">
-                              <tr>
-                                <th className="p-2.5">Category / Class</th>
-                                <th className="p-2.5 text-center bg-indigo-50/50 text-indigo-900">
-                                  {viewMode === "ussl" ? usslLeftVal : piperLeftVal}
-                                </th>
-                                <th className="p-2.5 text-center bg-amber-50/50 text-amber-900">
-                                  {viewMode === "ussl" ? usslRightVal : piperRightVal}
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-150 text-slate-700 font-medium">
-                              {comparisonTableData.map((row) => (
-                                <tr key={row.key} className="hover:bg-slate-50 transition-colors">
-                                  <td className="p-2.5 font-bold text-slate-800 flex items-center gap-2">
-                                    <span 
-                                      className="w-2.5 h-2.5 rounded-full border border-slate-300 shadow-xs shrink-0" 
-                                      style={{ backgroundColor: (viewMode === "ussl" ? usslColors : faciesColors)[row.key] || "#94a3b8" }}
-                                    />
-                                    {row.name}
+                        {/* Class distribution comparison table */}
+                        <div className="bg-white p-5 rounded-[2.5rem] border border-slate-200 shadow-lg space-y-4">
+                          <div className="border-b border-slate-100 pb-3">
+                            <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                              Distribution Comparison Table
+                            </h4>
+                            <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                              Total samples and percentage comparison
+                            </p>
+                          </div>
+
+                          <div className="overflow-hidden rounded-xl border border-slate-200">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead className="bg-slate-50 text-slate-600 font-bold text-[10px] tracking-wider border-b border-slate-200">
+                                <tr>
+                                  <th className="p-2.5">Category / Class</th>
+                                  <th className="p-2.5 text-center bg-indigo-50/50 text-indigo-900">
+                                    {viewMode === "ussl" ? usslLeftVal : piperLeftVal}
+                                  </th>
+                                  <th className="p-2.5 text-center bg-amber-50/50 text-amber-900">
+                                    {viewMode === "ussl" ? usslRightVal : piperRightVal}
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-150 text-slate-700 font-medium">
+                                {comparisonTableData.map((row) => (
+                                  <tr key={row.key} className="hover:bg-slate-50 transition-colors">
+                                    <td className="p-2.5 font-bold text-slate-800 flex items-center gap-2">
+                                      <span 
+                                        className="w-2.5 h-2.5 rounded-full border border-slate-300 shadow-xs shrink-0" 
+                                        style={{ backgroundColor: (viewMode === "ussl" ? usslColors : faciesColors)[row.key] || "#94a3b8" }}
+                                      />
+                                      {row.name}
+                                    </td>
+                                    <td className="p-2.5 text-center font-mono text-slate-650 bg-indigo-50/10">
+                                      <span className="font-extrabold text-slate-900">{row.leftCount}</span>{" "}
+                                      <span className="text-[10px] text-indigo-650">({row.leftPct.toFixed(1)}%)</span>
+                                    </td>
+                                    <td className="p-2.5 text-center font-mono text-slate-650 bg-amber-50/10">
+                                      <span className="font-extrabold text-slate-900">{row.rightCount}</span>{" "}
+                                      <span className="text-[10px] text-amber-650">({row.rightPct.toFixed(1)}%)</span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot className="bg-slate-100 font-black text-slate-900 border-t border-slate-300">
+                                <tr>
+                                  <td className="p-2.5">Total Samples</td>
+                                  <td className="p-2.5 text-center font-mono">
+                                    {comparisonTableData.reduce((sum, r) => sum + r.leftCount, 0)}
                                   </td>
-                                  <td className="p-2.5 text-center font-mono text-slate-650 bg-indigo-50/10">
-                                    <span className="font-extrabold text-slate-900">{row.leftCount}</span>{" "}
-                                    <span className="text-[10px] text-indigo-650">({row.leftPct.toFixed(1)}%)</span>
-                                  </td>
-                                  <td className="p-2.5 text-center font-mono text-slate-650 bg-amber-50/10">
-                                    <span className="font-extrabold text-slate-900">{row.rightCount}</span>{" "}
-                                    <span className="text-[10px] text-amber-650">({row.rightPct.toFixed(1)}%)</span>
+                                  <td className="p-2.5 text-center font-mono">
+                                    {comparisonTableData.reduce((sum, r) => sum + r.rightCount, 0)}
                                   </td>
                                 </tr>
-                              ))}
-                            </tbody>
-                            <tfoot className="bg-slate-100 font-black text-slate-900 border-t border-slate-300">
-                              <tr>
-                                <td className="p-2.5">Total Samples</td>
-                                <td className="p-2.5 text-center font-mono">
-                                  {comparisonTableData.reduce((sum, r) => sum + r.leftCount, 0)}
-                                </td>
-                                <td className="p-2.5 text-center font-mono">
-                                  {comparisonTableData.reduce((sum, r) => sum + r.rightCount, 0)}
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
+                              </tfoot>
+                            </table>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                }
+                    );
+                  }
 
-                return (
-                  <>
-                    {viewMode === "ussl" && (
-                      <DonutChart
-                        data={stats.ussl}
-                        colors={usslColors}
-                        sizes={usslSizes}
-                        onColorChange={(k, c) => setUsslColors((p) => ({ ...p, [k]: c }))}
-                        onSizeChange={(k, s) => setUsslSizes((p) => ({ ...p, [k]: s }))}
-                        defaultTitle="Irrigation USSL Classes"
-                      />
-                    )}
-                    {viewMode === "piper" && (
-                      <DonutChart
-                        data={stats.facies}
-                        colors={faciesColors}
-                        sizes={faciesSizes}
-                        onColorChange={(k, c) => setFaciesColors((p) => ({ ...p, [k]: c }))}
-                        onSizeChange={(k, s) => setFaciesSizes((p) => ({ ...p, [k]: s }))}
-                        onNameChange={(k, n) => setFaciesNames((p) => ({ ...p, [k]: n }))}
-                        defaultTitle="Water Hydro-Facies"
-                      />
-                    )}
-                  </>
-                );
-              })()}
-            </div>
+                  return (
+                    <>
+                      {viewMode === "ussl" && (
+                        <DonutChart
+                          data={stats.ussl}
+                          colors={usslColors}
+                          sizes={usslSizes}
+                          onColorChange={(k, c) => setUsslColors((p) => ({ ...p, [k]: c }))}
+                          onSizeChange={(k, s) => setUsslSizes((p) => ({ ...p, [k]: s }))}
+                          defaultTitle="Irrigation USSL Classes"
+                        />
+                      )}
+                      {viewMode === "piper" && (
+                        <DonutChart
+                          data={stats.facies}
+                          colors={faciesColors}
+                          sizes={faciesSizes}
+                          onColorChange={(k, c) => setFaciesColors((p) => ({ ...p, [k]: c }))}
+                          onSizeChange={(k, s) => setFaciesSizes((p) => ({ ...p, [k]: s }))}
+                          onNameChange={(k, n) => setFaciesNames((p) => ({ ...p, [k]: n }))}
+                          defaultTitle="Water Hydro-Facies"
+                        />
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         ) : false ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-stretch min-h-[720px]">

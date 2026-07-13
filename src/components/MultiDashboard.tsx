@@ -23,12 +23,20 @@ export default function MultiDashboard({
   const [selectedDashboardParams, setSelectedDashboardParams] = useState<string[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
+  const availableDashboardParams = React.useMemo(() => {
+    if (!headers || !headers.params) return [];
+    return headers.params.filter(p => {
+      const paramId = headerMap[p] || p;
+      return !["Na", "K", "HCO3", "CO3"].includes(paramId);
+    });
+  }, [headers, headerMap]);
+
   // Initialize selected parameters only when headers load
   useEffect(() => {
-    if (headers && headers.params && headers.params.length > 0) {
-      setSelectedDashboardParams([...headers.params]);
+    if (availableDashboardParams.length > 0) {
+      setSelectedDashboardParams([...availableDashboardParams]);
     }
-  }, [headers]);
+  }, [availableDashboardParams]);
 
   // Redraw Highcharts micro pies side-by-side whenever inputs change
   useEffect(() => {
@@ -124,10 +132,10 @@ export default function MultiDashboard({
   }, [rawData, selectedState, selectedDistrict, selectedDashboardParams, headerMap]);
 
   const handleSelectAll = () => {
-    if (selectedDashboardParams.length === headers.params.length) {
+    if (selectedDashboardParams.length === availableDashboardParams.length) {
       setSelectedDashboardParams([]);
     } else {
-      setSelectedDashboardParams([...headers.params]);
+      setSelectedDashboardParams([...availableDashboardParams]);
     }
   };
 
@@ -157,9 +165,9 @@ export default function MultiDashboard({
             >
               <span className="truncate flex items-center gap-1.5 font-bold uppercase tracking-wider text-slate-600">
                 <Filter className="w-3.5 h-3.5" />
-                {selectedDashboardParams.length === headers.params.length
+                {selectedDashboardParams.length === availableDashboardParams.length
                   ? "All Parameters Selected"
-                  : `${selectedDashboardParams.length}/${headers.params.length} Selected`}
+                  : `${selectedDashboardParams.length}/${availableDashboardParams.length} Selected`}
               </span>
               <ChevronDown className="w-4 h-4 text-slate-500 ml-1.5" />
             </button>
@@ -169,13 +177,13 @@ export default function MultiDashboard({
                 <label className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded-lg cursor-pointer border-b border-slate-100 font-bold text-xs text-slate-700">
                   <input
                     type="checkbox"
-                    checked={selectedDashboardParams.length === headers.params.length}
+                    checked={selectedDashboardParams.length === availableDashboardParams.length}
                     onChange={handleSelectAll}
                     className="rounded text-indigo-600 w-4 h-4"
                   />
                   <span>Select All</span>
                 </label>
-                {headers.params.map((val) => (
+                {availableDashboardParams.map((val) => (
                   <label key={val} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-600">
                     <input
                       type="checkbox"
