@@ -38,7 +38,7 @@ export const PiperDiagram = React.memo(({
   pointSizes,
   getPointKey,
   stateHeader,
-  is3d = false,
+  is3d = true,
   bubbleSizeMultiplier = 1,
   customTitle,
 }: PiperDiagramProps) => {
@@ -359,7 +359,7 @@ export const PiperDiagram = React.memo(({
   }, [displayData, pointColors, pointSizes, getPointKey, stateHeader, SQRT3, is3d, bubbleSizeMultiplier]);
 
   return (
-    <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 flex flex-col items-center w-full shadow-lg transition-colors duration-300 relative group">
+    <div className="bg-transparent p-6 flex flex-col items-center w-full transition-colors duration-300 relative group">
       <div className="absolute top-4 right-4 opacity-80 group-hover:opacity-100 transition-opacity z-10 flex gap-2">
         <button
           onClick={() => setIsCropActive(!isCropActive)}
@@ -442,7 +442,7 @@ export const PiperDiagram = React.memo(({
         />
       )}
 
-      <div id="piper-chart-export" className="flex flex-col items-center justify-center p-0 w-full bg-white rounded-2xl relative">
+      <div id="piper-chart-export" className="flex flex-col items-center justify-center p-0 w-full bg-transparent rounded-2xl relative">
         {/* Draggable/Resizable Crop Box overlay */}
         {isCropActive && (
           <div

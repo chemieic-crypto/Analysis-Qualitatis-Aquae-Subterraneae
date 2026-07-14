@@ -1787,7 +1787,7 @@ export default function BulletinView({
 
       const cx = getX(r);
       const cy = getY(t);
-      const color = groupColorMap[s.groupVal] || groupColorMap[s.facies] || "#475569";
+      const color = groupColorMap[s.groupVal || "Other"] || "#94a3b8";
 
       pointsSvg += `
         <circle cx="${cx}" cy="${cy}" r="2.8" fill="${color}" fill-opacity="0.9" stroke="#ffffff" stroke-width="0.3" />
@@ -1795,7 +1795,7 @@ export default function BulletinView({
     });
 
     const svg = `
-      <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; font-family: 'Inter', sans-serif;" xmlns="http://www.w3.org/2000/svg">
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" style="background-color: #ffffff; font-family: 'Inter', sans-serif;" xmlns="http://www.w3.org/2000/svg">
         <text x="${width / 2}" y="15" font-size="9" font-weight="900" fill="#64748b" text-anchor="middle" style="letter-spacing: 0.1em;">${title.toUpperCase()}</text>
         
         <!-- Y-Axis Label -->
@@ -1918,7 +1918,7 @@ export default function BulletinView({
 
       const cx = getX(ec);
       const cy = getY(sar);
-      const color = groupColorMap[s.groupVal] || groupColorMap[s.facies] || "#475569";
+      const color = groupColorMap[s.groupVal || "Other"] || "#94a3b8";
 
       pointsSvg += `
         <circle cx="${cx}" cy="${cy}" r="2.8" fill="${color}" fill-opacity="0.9" stroke="#ffffff" stroke-width="0.3" />
@@ -1926,7 +1926,7 @@ export default function BulletinView({
     });
 
     const svg = `
-      <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; font-family: 'Inter', sans-serif;" xmlns="http://www.w3.org/2000/svg">
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" style="background-color: #ffffff; font-family: 'Inter', sans-serif;" xmlns="http://www.w3.org/2000/svg">
         <text x="${width / 2}" y="15" font-size="9.5" font-weight="900" fill="#64748b" text-anchor="middle" style="letter-spacing: 0.1em;">USSL CLASSIFICATION MATRIX</text>
         
         <!-- Y-Axis Label -->
@@ -2229,7 +2229,7 @@ export default function BulletinView({
           <td style="padding: 6px; border: 1px solid #475569;">${globalTotal}</td>
           <td style="padding: 6px; border: 1px solid #475569; color: #b91c1c;">${globalExceed}</td>
           <td style="padding: 6px; border: 1px solid #475569;">${globalPct}%</td>
-          <td style="padding: 6px; border: 1px solid #475569;">${globalPartiallyAffectedSum}</td>
+          <td style="padding: 6px; border: 1px solid #475569;">${grandSubGroupCount}</td>
           <td style="padding: 6px; border: 1px solid #475569; text-align: left;">-</td>
         </tr>
       </tbody>
@@ -3506,7 +3506,20 @@ export default function BulletinView({
           improved: number;
           deteriorated: number;
           unchanged: number;
+          shiftedSafeToUnsafe: number;
+          shiftedUnsafeToSafe: number;
         }> = {};
+
+        const isSafe = (val: number) => {
+          const config = PARAM_CONFIG[configKey];
+          if (!config) return true;
+          if (configKey === "pH") {
+            return val >= config.b1 && val <= config.b2;
+          }
+          const isSingleLimit = config.b1 === config.b2 && configKey !== "pH";
+          const limit = isSingleLimit ? config.b1 : config.b2;
+          return val <= limit;
+        };
 
         pairedList.forEach((item) => {
           const gName = item[groupKey] || "Unknown";
@@ -3518,7 +3531,9 @@ export default function BulletinView({
               analyzed: 0,
               improved: 0,
               deteriorated: 0,
-              unchanged: 0
+              unchanged: 0,
+              shiftedSafeToUnsafe: 0,
+              shiftedUnsafeToSafe: 0
             };
           }
 
@@ -3527,6 +3542,15 @@ export default function BulletinView({
 
           const preVal = item.preVal;
           const postVal = item.postVal;
+
+          const isPreSafe = isSafe(preVal);
+          const isPostSafe = isSafe(postVal);
+
+          if (isPreSafe && !isPostSafe) {
+            g.shiftedSafeToUnsafe++;
+          } else if (!isPreSafe && isPostSafe) {
+            g.shiftedUnsafeToSafe++;
+          }
 
           if (preVal === 0) {
             if (postVal === 0) {
@@ -3568,6 +3592,13 @@ export default function BulletinView({
         }, 0);
         const totalUnchanged = totalSamples - totalImproved - totalDeteriorated;
 
+        const totalShiftedSafeToUnsafe = pairedList.reduce((acc, item) => {
+          return acc + (isSafe(item.preVal) && !isSafe(item.postVal) ? 1 : 0);
+        }, 0);
+        const totalShiftedUnsafeToSafe = pairedList.reduce((acc, item) => {
+          return acc + (!isSafe(item.preVal) && isSafe(item.postVal) ? 1 : 0);
+        }, 0);
+
         const pctImproved = ((totalImproved / totalSamples) * 100).toFixed(2);
         const pctDeteriorated = ((totalDeteriorated / totalSamples) * 100).toFixed(2);
         const pctUnchanged = ((totalUnchanged / totalSamples) * 100).toFixed(2);
@@ -3597,6 +3628,8 @@ export default function BulletinView({
           <br>• <strong>कोई महत्वपूर्ण बदलाव नहीं (No significant Change):</strong> मानसून के बाद का मान, पूर्व-मानसून मान के ±20% के भीतर है।
           <br><br>
           पूर्व-मानसून और मानसून के बाद के दोनों मौसमों के दौरान ${totalDistricts} ${groupNounPlural} में विश्लेषण किए गए कुल ${totalSamples} भूजल नमूनों में से, मानसून के बाद मुख्य प्रवृत्ति <strong>${dominantTrend === "No Significant Change" ? "कोई महत्वपूर्ण बदलाव नहीं" : (dominantTrend === "Improved" ? "सुधार" : "गिरावट")}</strong> है। परीक्षण स्थलों के एक बड़े हिस्से—${dominantCount} नमूने या ${dominantPct}%—ने जल गुणवत्ता में कोई महत्वपूर्ण परिवर्तन नहीं दर्शाया। जहाँ बदलाव हुए, वहाँ कुल सुधार गिरावट की तुलना में अधिक देखे गए, जिसमें ${totalImproved} नमूने (${pctImproved}%) सुधार दर्शाते हैं जबकि ${totalDeteriorated} नमूने (${pctDeteriorated}%) गिरावट दर्शाते हैं।
+          <br><br>
+          इसके अतिरिक्त, संक्रमण विश्लेषण दर्शाता है कि मानसून के बाद <strong>${totalShiftedSafeToUnsafe} नमूने</strong> सुरक्षित स्थिति से असुरक्षित स्थिति (मानक सीमाओं से अधिक) में स्थानांतरित हो गए, जबकि <strong>${totalShiftedUnsafeToSafe} नमूने</strong> ताज़ा पुनर्भरण तनुकरण के कारण असुरक्षित स्थिति से वापस सुरक्षित स्थिति में परिवर्तित हो गए।
           <br><br>
           ${paramName} पर मानसून का गतिशील प्रभाव (युग्मित साइट विश्लेषण) <strong>तालिका ${tableNum}</strong> में दिया गया है।`;
         } else {
@@ -3737,6 +3770,8 @@ export default function BulletinView({
             ${halfText} of the testing sites—<strong>${dominantCount} samples, or ${dominantPct}%</strong>—showed no significant change in water quality. 
             Where shifts did occur, ${shiftsText}.
             <br><br>
+            Additionally, the transition analysis shows that <strong>${totalShiftedSafeToUnsafe} sample(s)</strong> shifted from a Safe state to an Unsafe state (exceeding standard thresholds) post-monsoon, while <strong>${totalShiftedUnsafeToSafe} sample(s)</strong> transitioned from an Unsafe/exceeding state back to a Safe state due to fresh recharge dilution.
+            <br><br>
             Several ${groupNounPlural.toLowerCase()} exhibited remarkable stability, maintaining their baseline measurements across the vast majority of their sites. 
             ${stabilitySentence} 
             ${unchangedVolSentence}
@@ -3762,7 +3797,9 @@ export default function BulletinView({
           isHindi ? "गिरावट (संख्या)" : "Deteriorated (No.)",
           isHindi ? "गिरावट (%)" : "Deteriorated (%)",
           isHindi ? "कोई बदलाव नहीं (संख्या)" : "No Significant Change (No.)",
-          isHindi ? "कोई बदलाव नहीं (%)" : "No Significant Change (%)"
+          isHindi ? "कोई बदलाव नहीं (%)" : "No Significant Change (%)",
+          isHindi ? "सुरक्षित से असुरक्षित" : "Shifted Safe to Unsafe",
+          isHindi ? "असुरक्षित से सुरक्षित" : "Shifted Unsafe to Safe"
         ];
 
         let rowsHTML = "";
@@ -3781,6 +3818,8 @@ export default function BulletinView({
               <td style="padding: 8px; text-align: center; color: #dc2626; border: 1px solid #94a3b8;">${detPct}%</td>
               <td style="padding: 8px; text-align: center; color: #475569; border: 1px solid #94a3b8;">${g.unchanged}</td>
               <td style="padding: 8px; text-align: center; color: #475569; border: 1px solid #94a3b8;">${uncPct}%</td>
+              <td style="padding: 8px; text-align: center; color: #b91c1c; font-weight: bold; border: 1px solid #94a3b8;">${g.shiftedSafeToUnsafe}</td>
+              <td style="padding: 8px; text-align: center; color: #047857; font-weight: bold; border: 1px solid #94a3b8;">${g.shiftedUnsafeToSafe}</td>
             </tr>
           `;
         });
@@ -3795,6 +3834,8 @@ export default function BulletinView({
             <td style="padding: 8px; text-align: center; color: #dc2626; border: 1px solid #94a3b8;">${pctDeteriorated}%</td>
             <td style="padding: 8px; text-align: center; color: #475569; border: 1px solid #94a3b8;">${totalUnchanged}</td>
             <td style="padding: 8px; text-align: center; color: #475569; border: 1px solid #94a3b8;">${pctUnchanged}%</td>
+            <td style="padding: 8px; text-align: center; color: #b91c1c; border: 1px solid #94a3b8;">${totalShiftedSafeToUnsafe}</td>
+            <td style="padding: 8px; text-align: center; color: #047857; border: 1px solid #94a3b8;">${totalShiftedUnsafeToSafe}</td>
           </tr>
         `;
 
@@ -4134,7 +4175,9 @@ export default function BulletinView({
 
         let description = `The ${breakdownLevel.toLowerCase()}-wise distribution of samples exceeding the permissible limit (${thresholdStr}) for ${config.name} is presented below.`;
         if (configKey === "EC") {
-          description = `Electrical Conductivity (EC) refers to the capability of water to conduct electrical current, mapping overall ion and salinity concentration. The ${breakdownLevel.toLowerCase()}-wise distribution of samples above the electrical threshold (>3000 µS/cm) is calculated below.`;
+          description = `Electrical Conductivity (EC) is one of the most widely used parameters for assessing groundwater quality, as it provides an indirect measure of the total dissolved solids (TDS) present in water. It reflects the ability of water to conduct an electric current, which is directly proportional to the concentration of dissolved ions such as calcium, magnesium, sodium, potassium, chloride, sulfate, and bicarbonate. Higher EC values generally indicate elevated salinity levels, which may be attributed to natural processes such as mineral dissolution, rock–water interaction, and seawater ingress, or to anthropogenic influences including irrigation return flows, industrial effluents, and improper waste disposal.
+					Electrical conductance is directly related to the abundance of charged ionic compounds (Hem 1985). Salinity always exists in ground water but in variable amounts. It is mostly influenced by aquifer material, solubility of minerals, duration of contact and factors such as the permeability of soil, drainage facilities, and quantity of rainfall and above all, the climate of the area. The salinity of groundwater in coastal areas in addition to the above may be due to air borne salts originating from air water interface over the sea and due to over pumping of fresh water which overlays saline water in coastal aquifer systems. 
+					Monitoring EC is important because it influences the suitability of groundwater for drinking, irrigation, and industrial use. While water with low EC may be unsuitable due to corrosiveness and lack of essential minerals, excessively high EC imparts undesirable taste, reduces crop productivity through soil salinization, and may lead to long-term health concerns. As per BIS:10500 guidelines, the acceptable limit for EC is 750 µS/cm at 25°C, with a permissible limit of 3000 µS/cm in the absence of an alternative source. Given its significance as a rapid indicator of groundwater quality, EC serves as a baseline parameter in water quality assessments, providing insights into the extent of salinity, hydrogeochemical processes, and anthropogenic stress on aquifers.`;
         } else if (configKey === "F") {
           if (isHindi) {
             description = `
@@ -4213,9 +4256,21 @@ export default function BulletinView({
             `;
           }
         } else if (configKey === "NO3") {
-          description = `Nitrate enrichment is mostly localized, tracing sanitation effluents or excessive agricultural nitrogen feed. The ${breakdownLevel.toLowerCase()}-wise distribution above nitrate safety limits (>45 mg/L) is parsed below.`;
+          description = `Nitrate in Groundwater  is one of the most widespread groundwater contaminants and constitutes a major concern for drinking water quality due to its adverse impacts on human health. Elevated nitrate concentrations in groundwater primarily result from anthropogenic activities, including excessive application of nitrogenous fertilizers, improper disposal of animal wastes, leakage from septic tanks and sewerage systems, and infiltration of untreated or partially treated domestic wastewater. In agricultural regions, nitrate contamination is predominantly associated with intensive fertilizer use and irrigation practices that enhance the leaching of nitrogen through the unsaturated zone into underlying aquifers.
+
+Consumption of drinking water containing nitrate above the prescribed permissible limit poses significant health risks, particularly to infants below six months of age, in whom it may cause methemoglobinemia (Blue Baby Syndrome) by impairing the oxygen-carrying capacity of blood. Long-term exposure to elevated nitrate concentrations has also been associated with adverse health effects in adults, including potential risks related to thyroid dysfunction, reproductive disorders, and the endogenous formation of N-nitroso compounds, although these associations continue to be investigated. Consequently, nitrate concentrations exceeding the prescribed drinking water standards render groundwater unsuitable for potable use without appropriate treatment.
+
+The aqueous geochemistry of nitrogen is governed by the nitrogen cycle and is strongly influenced by redox conditions, microbial activity, pH, and the availability of organic carbon. Nitrogen occurs in groundwater in several oxidation states, including nitrate (NO₃⁻), nitrite (NO₂⁻), ammonium (NH₄⁺), ammonia (NH₃), dissolved molecular nitrogen (N₂), nitrous oxide (N₂O), and organically bound nitrogen. Under oxidizing conditions, nitrate is the thermodynamically stable and most mobile inorganic nitrogen species; consequently, it is the predominant form detected in groundwater. In contrast, ammonium is more stable under reducing environments, while nitrite generally occurs only as a transient intermediate during nitrification and denitrification processes.
+
+Natural nitrogen concentrations in soils are generally insufficient to sustain intensive agricultural production. Therefore, nitrogen is commonly supplemented through the application of fertilizers such as urea [CO(NH₂)₂], ammonium nitrate (NH₄NO₃), calcium ammonium nitrate (CAN), ammonium sulphate [(NH₄)₂SO₄], and diammonium phosphate (DAP, (NH₄)₂HPO₄). Following application, these fertilizers undergo microbial transformation in the soil. Ammonium released from fertilizers is oxidized to nitrate through the process of nitrification, after which the highly soluble and weakly sorbed nitrate ion is readily transported with infiltrating recharge water. Because nitrate exhibits negligible adsorption onto most soil minerals, it is highly susceptible to leaching and can migrate through the vadose zone into groundwater, particularly in areas with permeable soils, shallow water tables, and excessive irrigation or rainfall.
+
+The occurrence of elevated nitrate concentrations in groundwater is therefore indicative of the transport of nitrogen from surface and near-surface sources into the aquifer system. The principal sources include agricultural fertilizers, livestock manure, septic tank effluents, sewage leakage, municipal waste disposal sites, and other nitrogen-rich organic wastes. Hydrogeological factors such as aquifer lithology, recharge characteristics, groundwater flow dynamics, and redox conditions further influence the transport, transformation, and persistence of nitrate in groundwater.`;
         } else if (configKey === "As") {
-          description = `Arsenic is highly toxic and prolonged consumption represents serious public health risks. The ${breakdownLevel.toLowerCase()}-wise distribution beyond safety boundaries (>10 ppb) is detail mapped below.`;
+          description = `Arsenic (As) is a naturally occurring toxic metalloid that is widely distributed in the Earth's crust, with an average crustal abundance of approximately 1.5–2.0 mg/kg. It has emerged as one of the most significant groundwater contaminants worldwide and poses a serious public health concern in several countries, including India. Chronic exposure to arsenic through the consumption of contaminated drinking water can result in arsenicosis and is associated with various adverse health effects. Recognizing its toxicity, the Bureau of Indian Standards (BIS), under IS 10500:2012, has prescribed an acceptable limit of 0.01 mg/L (10 μg/L) for arsenic in drinking water, with no relaxation in the absence of an alternate safe source.
+
+The occurrence of arsenic in groundwater is predominantly of geogenic origin, resulting from natural water–rock interactions and geochemical processes occurring within aquifer systems. Arsenic is present as a trace constituent in a variety of sulphide and sulphosalt minerals, including arsenopyrite (FeAsS), realgar (As₄S₄), orpiment (As₂S₃), pyrite (FeS₂), enargite (Cu₃AsS₄), and tennantite ((Cu,Fe)₁₂As₄S₁₃). In addition to its occurrence in primary minerals, arsenic is frequently adsorbed or co-precipitated with secondary mineral phases such as iron oxyhydroxides (FeOOH), manganese oxides, clay minerals, and natural organic matter. The mobilization of arsenic into groundwater is largely governed by hydrogeochemical processes, including the oxidation of arsenic-bearing sulphide minerals, reductive dissolution of iron oxyhydroxides, competitive desorption, and changes in pH and redox conditions.
+
+Although natural geological sources account for the majority of arsenic contamination in groundwater, anthropogenic activities may also contribute locally to elevated arsenic concentrations. Such sources include mining and ore processing, metallurgical and smelting industries, coal combustion, the historical use of arsenic-containing pesticides and herbicides, discharge of industrial effluents, and improper disposal of arsenic-bearing wastes. In most groundwater systems, however, the contribution from anthropogenic sources is generally secondary compared to naturally occurring geogenic processes that control the release, transport, and distribution of arsenic within aquifers.`;
         }
 
         // Count values per category
@@ -4270,7 +4325,7 @@ export default function BulletinView({
         if (isHindi) {
           textSummaryRange += `<p style="text-align: justify; line-height: 1.6; margin-bottom: 15px;">${config.name} की अनुमेय पेयजल सीमा (${thresholdStr}) से अधिक नमूनों का ${breakdownLevel === "State" ? "राज्य/संघ राज्य क्षेत्र" : "जिला"}-वार वितरण <strong>तालिका सं. ${tableANum}</strong> में दर्शाया गया है।</p>`;
         } else {
-          textSummaryRange += `<p style="text-align: justify; line-height: 1.6; margin-bottom: 15px;">The ${breakdownLevel.toLowerCase()}-wise distribution of samples above the "${config.name}" permissible limit (${limitLabelStr}) is depicted in Table No. ${tableANum}.</p>`;
+          textSummaryRange += `<p style="text-align: justify; line-height: 1.6; margin-bottom: 15px;">The ${breakdownLevel.toLowerCase()}-wise distribution of samples above the ${config.name} permissible limit (${limitLabelStr}) is depicted in Table No. ${tableANum}.</p>`;
         }
 
         const tableInfo = generateBulletinTableHTML(configKey, filteredData, breakdownLevel, tableANum);
@@ -4375,7 +4430,7 @@ export default function BulletinView({
               <p style="text-align: justify; line-height: 1.6; margin-top: 15px; margin-bottom: 15px;">
                 ${isHindi
                   ? `${config.name} (${configKey}) के वितरण को दर्शाने वाला स्थानिक जीआईएस मानचित्र (Spatial GIS Map) <strong>चित्र "${figIndex}"</strong> में प्रस्तुत किया गया है।`
-                  : `Spatial GIS Map showing ${config.name} (${configKey}) distribution is given in figure "${figIndex}".`
+                  : `Spatial GIS Map showing ${config.name} (${configKey}) distribution is given in figure ${figIndex}.`
                 }
               </p>
               <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
@@ -4634,6 +4689,44 @@ export default function BulletinView({
 
       const hasCompleteFaciesData = totalValidFacies > 0;
 
+      const getDiagramCaption = (type: "Piper" | "USSL" | "Gibbs", label: string, samples: any[]) => {
+        const isNational = bulletinScope === "National";
+        const typeLabel = isNational ? "States/UT" : "Districts";
+        
+        let suffix = "";
+        const lowerLabel = label.toLowerCase();
+        if (lowerLabel.includes("national") || lowerLabel.includes("overall level")) {
+          suffix = isNational ? "All States/UTs" : `All Districts of ${bulletinScope}`;
+        } else if (lowerLabel.includes("overall state level")) {
+          suffix = `All Districts of ${bulletinScope}`;
+        } else if (lowerLabel.includes("district:") || lowerLabel.includes("district :")) {
+          const dName = label.replace(/district\s*:\s*/gi, "").trim();
+          suffix = dName;
+        } else {
+          // Check if this label matches a custom set name
+          const matchedCustomSet = customSets?.find(s => s.name === label);
+          if (matchedCustomSet) {
+            suffix = matchedCustomSet.selectedLocations.join(", ");
+          } else {
+            // Check if label contains some specific location names or rset samples
+            const locs = Array.from(new Set(samples.map((s: any) => isNational ? s.stateVal : s.groupVal).filter(Boolean)));
+            if (locs.length > 0) {
+              suffix = locs.join(", ");
+            } else {
+              suffix = label;
+            }
+          }
+        }
+
+        const diagramName = type === "Piper" 
+          ? "Piper Trilinear Diagram" 
+          : type === "USSL" 
+            ? "U.S. Salinity Laboratory (USSL) Diagram" 
+            : "Gibbs Diagram";
+
+        return `${diagramName} for the ${typeLabel} : ${suffix}`;
+      };
+
       // Define custom renderSets for the diagrams
       interface RenderSet {
         name: string;
@@ -4697,7 +4790,7 @@ export default function BulletinView({
       };
 
       // Reusable Piper Diagram SVG generator without legend for high-definition rendering
-      const generatePiperDiagramHTML = (title: string, samples: typeof validFaciesSamples) => {
+      const generatePiperDiagramHTML = (title: string, samples: typeof validFaciesSamples, groupColorMap: Record<string, string>) => {
         if (samples.length === 0) {
           return `
             <div style="background-color: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 25px; text-align: center; margin: 20px 0; max-width: 500px; margin-left: auto; margin-right: auto;">
@@ -4803,7 +4896,7 @@ export default function BulletinView({
               ${svgMarkup}
             </div>
             <p style="text-align: center; font-style: italic; font-size: 10pt; margin-top: -15px; color: #475569;">
-              <strong>Figure ${figIndex++}:</strong> Piper Trilinear Diagram - ${title}
+              <strong>Figure ${figIndex++}:</strong> ${getDiagramCaption("Piper", title, samples)}
             </p>
           </div>
         `;
@@ -4819,19 +4912,13 @@ export default function BulletinView({
         if (customSets && customSets.length > 0) {
           piperPlotHTML = `<div style="display: flex; flex-direction: column; gap: 30px; margin-top: 20px;">`;
           renderSets.forEach((rset) => {
-            const plotMarkup = generatePiperDiagramHTML(rset.name, rset.samples);
+            const plotMarkup = generatePiperDiagramHTML(rset.name, rset.samples, groupColorMap);
             piperPlotHTML += `
-              <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; page-break-inside: avoid; text-align: center;">
-                <h5 style="margin: 0 0 10px 0; font-size: 11pt; font-weight: bold; color: #1e3a8a; text-align: left; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px;">Diagram Set: ${rset.name}</h5>
-                <p style="font-size: 9.5pt; color: #475569; line-height: 1.4; margin-bottom: 15px; text-align: justify;">
-                  ${rset.description}
-                </p>
+              <div style="background-color: #ffffff; padding: 20px; margin-bottom: 20px; page-break-inside: avoid; text-align: center;">
+                <h5 style="margin: 0 0 10px 0; font-size: 11pt; font-weight: bold; color: #1e3a8a; text-align: left; border-bottom: 2px dotted #1e3a8a; padding-bottom: 5px;"></h5>
                 <div style="display: inline-block; margin: 0 auto;">
                   ${plotMarkup}
                 </div>
-                <p style="text-align: center; font-style: italic; font-size: 10pt; margin-top: 10px; color: #475569;">
-                  <strong>Figure ${figIndex++}:</strong> Piper Trilinear Diagram - ${rset.name}
-                </p>
               </div>
             `;
           });
@@ -4848,7 +4935,7 @@ export default function BulletinView({
             Overall, the customized Hydrochemical diagram sets allow comparative hydrogeochemical profiling across regional domains, highlighting specific ionic compositions and mineral signatures unique to the selected state/district combinations.
           `;
         } else if (bulletinScope === "National") {
-          piperPlotHTML = generatePiperDiagramHTML("National / Overall Level (All States)", validFaciesSamples);
+          piperPlotHTML = generatePiperDiagramHTML("National / Overall Level (All States)", validFaciesSamples, groupColorMap);
           regionalPiperHTML = "";
 
           faciesListHTML = `
@@ -4879,7 +4966,7 @@ export default function BulletinView({
           `;
         } else {
           // --- State Level Customization ---
-          piperPlotHTML = generatePiperDiagramHTML(`Overall State Level (${bulletinScope})`, validFaciesSamples);
+          piperPlotHTML = generatePiperDiagramHTML(`Overall State Level (${bulletinScope})`, validFaciesSamples, groupColorMap);
 
           const distinctDistricts = Array.from(new Set(validFaciesSamples.map(s => s.groupVal).filter(Boolean))).sort();
           districtPiperHTML = `
@@ -4892,7 +4979,7 @@ export default function BulletinView({
 
           distinctDistricts.forEach((dist) => {
             const distSamples = validFaciesSamples.filter(s => s.groupVal === dist);
-            const distPlot = generatePiperDiagramHTML(`District: ${dist}`, distSamples);
+            const distPlot = generatePiperDiagramHTML(`District: ${dist}`, distSamples, groupColorMap);
             
             // Calculate dominant water type for this district
             const distFaciesCounts: Record<string, number> = {};
@@ -5091,11 +5178,8 @@ export default function BulletinView({
           const gibbsAnionPlot = generateGibbsDiagramHTML("anion", `Gibbs Anion Plot - ${rset.name}`, rset.samples, groupColorMap);
 
           gibbsPlotHTML += `
-            <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; page-break-inside: avoid; text-align: center;">
-              <h5 style="margin: 0 0 10px 0; font-size: 11pt; font-weight: bold; color: #1e3a8a; text-align: left; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px;">Diagram Set: ${rset.name}</h5>
-              <p style="font-size: 9.5pt; color: #475569; line-height: 1.4; margin-bottom: 15px; text-align: justify;">
-                ${rset.description}
-              </p>
+            <div style="background-color: #ffffff; padding: 20px; page-break-inside: avoid; text-align: center;">
+              <h5 style="margin: 0 0 10px 0; font-size: 11pt; font-weight: bold; color: #1e3a8a; text-align: left; border-bottom: 2px dotted #1e3a8a; padding-bottom: 5px;"></h5>
               <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin: 20px 0;">
                 <div style="display: inline-block; padding: 5px; width: 45%; max-width: 300px;">
                   ${gibbsCationPlot}
@@ -5105,7 +5189,7 @@ export default function BulletinView({
                 </div>
               </div>
               <p style="text-align: center; font-style: italic; font-size: 10pt; margin-top: 10px; color: #475569;">
-                <strong>Figure ${figIndex++}:</strong> Gibbs plots (Cation & Anion Dominance) - ${rset.name}
+                <strong>Figure ${figIndex++}:</strong> ${getDiagramCaption("Gibbs", rset.name, rset.samples)}
               </p>
             </div>
           `;
@@ -5501,10 +5585,24 @@ export default function BulletinView({
           ? `तालिका ${tblIndex - 1}: ${titleRegion} के विभिन्न ${breakdownLevel === "State" ? "राज्यों" : "जिलों"} में SAR मानों का प्रतिशत वितरण`
           : `Table ${tblIndex - 1}: Percent distribution of SAR values in different ${breakdownLevel}s of ${titleRegion}`;
 
+        const sarMonsoonImpact = getMonsoonImpactAnalysis(
+          "SAR",
+          "Sodium Adsorption Ratio",
+          rawData,
+          headers,
+          headerMap,
+          bulletinScope,
+          isHindi,
+          tblIndex
+        );
+        if (sarMonsoonImpact.hasData) {
+          tblIndex++;
+        }
+
         const rscHeading = isHindi ? "6.2 अवशिष्ट सोडियम कार्बोनेट (RSC)" : "6.2 Residual Sodium Carbonate (RSC)";
         const rscP1 = isHindi
           ? `यदि संवर्धित कार्बोनेट (अवशिष्ट) सांद्रता अपेक्षाकृत उच्च हो जाती है, तो कार्बोनेट कैल्शियम और मैग्नीशियम के साथ मिलकर अवक्षेप बनाते हैं। विनिमेय मिट्टी की तुलना में सोडियम की सापेक्ष बहुतायत और क्षारीय मिट्टी से अधिक बाइकार्बोनेट और कार्बोनेट की मात्रा भी सिंचाई के लिए पानी की उपयुक्तता को प्रभावित करती है। इस आधिक्य को <strong>"अवशिष्ट सोडियम कार्बोनेट" (RSC)</strong> के रूप में दर्शाया जाता है।`
-          : `If the enriched carbonate (residual) concentration becomes relatively high, carbonates get together with calcium and magnesium to form precipitates. The relative abundance of sodium in comparison to alkaline earths and the quantity of bicarbonate and carbonate in excess of alkaline earths also influences the suitability of water for irrigation. This excess is represented in terms of "Residual Sodium Carbonate" (RSC).`;
+          : `In irrigation water, quality is characterized by both absolute and relative concentrations of cations and anions. If sodium concentrations are high, the alkali/sodicity hazard is high, whereas if calcium and magnesium levels are high, this hazard is low. Alkali soils are formed by the accumulation of exchangeable sodium and are characterized by poor tilth and low soil permeability. The U.S. Salinity Laboratory has recommended the use of the Sodium Adsorption Ratio (SAR) as it is closely related to the adsorption of sodium by the soil.`;
         
         const rscP2 = isHindi ? "अत्यधिक घुलनशील सोडियम कार्बोनेट जिसे अवशिष्ट सोडियम कार्बोनेट (RSC) के रूप में जाना जाता है, इस प्रकार परिभाषित किया गया है:" : "The highly soluble sodium carbonate known as residual sodium carbonate (RSC) is defined as:";
         
@@ -5523,6 +5621,20 @@ export default function BulletinView({
         const table23Caption = isHindi
           ? `तालिका ${tblIndex - 1}: ${titleRegion} के विभिन्न ${breakdownLevel === "State" ? "राज्यों" : "जिलों"} में RSC मानों का प्रतिशत वितरण`
           : `Table ${tblIndex - 1}: Percent distribution of RSC values in different ${breakdownLevel}s of ${titleRegion}`;
+
+        const rscMonsoonImpact = getMonsoonImpactAnalysis(
+          "RSC",
+          "Residual Sodium Carbonate",
+          rawData,
+          headers,
+          headerMap,
+          bulletinScope,
+          isHindi,
+          tblIndex
+        );
+        if (rscMonsoonImpact.hasData) {
+          tblIndex++;
+        }
 
         agriculturalSuitabilityHTML = `
           <h3 style="font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #475569; padding-bottom: 5px; margin-top: 35px; page-break-before: always;">${agHeading}</h3>
@@ -5581,6 +5693,8 @@ export default function BulletinView({
                    </div>`
                 : ""
             }
+
+            ${sarMonsoonImpact.hasData ? sarMonsoonImpact.html : ""}
           </div>
 
           <h4 style="font-size: 12pt; font-weight: bold; color: #1e3a8a; margin-top: 30px; margin-bottom: 10px; page-break-before: always;">${rscHeading}</h4>
@@ -5636,6 +5750,8 @@ export default function BulletinView({
               : ""
           }
 
+          ${rscMonsoonImpact.hasData ? rscMonsoonImpact.html : ""}
+
           ${(() => {
             const usslHeading = isHindi ? "6.3 यू.एस. लवणता प्रयोगशाला (USSL) आरेख वर्गीकरण" : "6.3 U.S. Salinity Laboratory (USSL) Diagram Classification";
             const usslP1 = isHindi
@@ -5646,16 +5762,13 @@ export default function BulletinView({
             renderSets.forEach((rset) => {
               const usslPlotSVG = generateUsslDiagramHTML(rset.samples, groupColorMap);
               usslPlotsHTML += `
-                <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; page-break-inside: avoid; text-align: center;">
-                  <h5 style="margin: 0 0 10px 0; font-size: 11pt; font-weight: bold; color: #1e3a8a; text-align: left; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px;">Diagram Set: ${rset.name}</h5>
-                  <p style="font-size: 9.5pt; color: #475569; line-height: 1.4; margin-bottom: 15px; text-align: justify;">
-                    ${rset.description}
-                  </p>
+                <div style="background-color: #ffffff; padding: 20px; page-break-inside: avoid; text-align: center;">
+                  <h5 style="margin: 0 0 10px 0; font-size: 11pt; font-weight: bold; color: #1e3a8a; text-align: left; border-bottom: 2px dotted #1e3a8a; padding-bottom: 5px;"></h5>
                   <div style="display: inline-block; margin: 0 auto; width: 100%; max-width: 550px;">
                     ${usslPlotSVG}
                   </div>
                   <p style="text-align: center; font-style: italic; font-size: 10pt; margin-top: 10px; color: #475569;">
-                    <strong>Figure ${figIndex++}:</strong> ${isHindi ? "सिंचाई जल गुणवत्ता मूल्यांकन के लिए यू.एस. लवणता प्रयोगशाला (USSL) आरेख" : "U.S. Salinity Laboratory (USSL) Diagram"} - ${rset.name}
+                    <strong>Figure ${figIndex++}:</strong> ${getDiagramCaption("USSL", rset.name, rset.samples)}
                   </p>
                 </div>
               `;

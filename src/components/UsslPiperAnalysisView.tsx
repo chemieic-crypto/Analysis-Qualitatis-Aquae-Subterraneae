@@ -3175,7 +3175,7 @@ export default function UsslPiperAnalysisView({
               {viewMode === "ussl" && (
                 <div className="space-y-6">
                   {usslCompareBy === "none" ? (
-                    <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm">
+                    <div className="bg-transparent p-5 rounded-3xl">
                       <UsslDiagram
                         data={validData}
                         pointColors={getActiveColorsForMode("ussl")}
@@ -3188,7 +3188,7 @@ export default function UsslPiperAnalysisView({
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm relative">
+                      <div className="bg-transparent p-5 rounded-3xl relative">
                         <div className="absolute top-4 left-4 bg-indigo-50 text-indigo-700 text-[9px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider border border-indigo-200 z-10 shadow-xs">
                           {usslCompareBy.charAt(0).toUpperCase() + usslCompareBy.slice(1)}: {usslLeftVal}
                         </div>
@@ -3203,7 +3203,7 @@ export default function UsslPiperAnalysisView({
                           customTitle={`USSL Matrix (${usslLeftVal})`}
                         />
                       </div>
-                      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm relative">
+                      <div className="bg-transparent p-5 rounded-3xl relative">
                         <div className="absolute top-4 left-4 bg-indigo-50 text-indigo-700 text-[9px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider border border-indigo-200 z-10 shadow-xs">
                           {usslCompareBy.charAt(0).toUpperCase() + usslCompareBy.slice(1)}: {usslRightVal}
                         </div>
@@ -3226,7 +3226,7 @@ export default function UsslPiperAnalysisView({
               {viewMode === "piper" && (
                 <div className="space-y-6">
                   {piperCompareBy === "none" ? (
-                    <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm">
+                    <div className="bg-transparent p-5 rounded-3xl">
                       <PiperDiagram
                         data={validData}
                         pointColors={getActiveColorsForMode("piper")}
@@ -3239,7 +3239,7 @@ export default function UsslPiperAnalysisView({
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm relative">
+                      <div className="bg-transparent p-5 rounded-3xl relative">
                         <div className="absolute top-4 left-4 bg-indigo-50 text-indigo-700 text-[9px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider border border-indigo-200 z-10 shadow-xs">
                           {piperCompareBy.charAt(0).toUpperCase() + piperCompareBy.slice(1)}: {piperLeftVal}
                         </div>
@@ -3254,7 +3254,7 @@ export default function UsslPiperAnalysisView({
                           customTitle={`Piper Diagram (${piperLeftVal})`}
                         />
                       </div>
-                      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm relative">
+                      <div className="bg-transparent p-5 rounded-3xl relative">
                         <div className="absolute top-4 left-4 bg-indigo-50 text-indigo-700 text-[9px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider border border-indigo-200 z-10 shadow-xs">
                           {piperCompareBy.charAt(0).toUpperCase() + piperCompareBy.slice(1)}: {piperRightVal}
                         </div>
@@ -3278,7 +3278,7 @@ export default function UsslPiperAnalysisView({
                 <div className="space-y-6">
                   {gibbsCompareBy === "none" ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm">
+                      <div className="bg-transparent p-5 rounded-3xl">
                         <GibbsPlot
                           data={validData}
                           type="cation"
@@ -3291,7 +3291,7 @@ export default function UsslPiperAnalysisView({
                           bubbleSizeMultiplier={bubbleSizeMultiplier}
                         />
                       </div>
-                      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm">
+                      <div className="bg-transparent p-5 rounded-3xl">
                         <GibbsPlot
                           data={validData}
                           type="anion"
@@ -3317,7 +3317,7 @@ export default function UsslPiperAnalysisView({
                             {gibbsCompareBy.charAt(0).toUpperCase() + gibbsCompareBy.slice(1)}: {gibbsLeftVal}
                           </span>
                         </div>
-                        <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm">
+                        <div className="bg-transparent p-4 rounded-3xl">
                           <GibbsPlot
                             data={gibbsLeftData}
                             type="cation"
@@ -3330,7 +3330,7 @@ export default function UsslPiperAnalysisView({
                             bubbleSizeMultiplier={bubbleSizeMultiplier}
                           />
                         </div>
-                        <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm">
+                        <div className="bg-transparent p-4 rounded-3xl">
                           <GibbsPlot
                             data={gibbsLeftData}
                             type="anion"
@@ -3355,7 +3355,7 @@ export default function UsslPiperAnalysisView({
                             {gibbsCompareBy.charAt(0).toUpperCase() + gibbsCompareBy.slice(1)}: {gibbsRightVal}
                           </span>
                         </div>
-                        <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm">
+                        <div className="bg-transparent p-4 rounded-3xl">
                           <GibbsPlot
                             data={gibbsRightData}
                             type="cation"
@@ -3368,7 +3368,7 @@ export default function UsslPiperAnalysisView({
                             bubbleSizeMultiplier={bubbleSizeMultiplier}
                           />
                         </div>
-                        <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm">
+                        <div className="bg-transparent p-4 rounded-3xl">
                           <GibbsPlot
                             data={gibbsRightData}
                             type="anion"

@@ -41,7 +41,7 @@ export const GibbsPlot = React.memo(({
   pointSizes,
   getPointKey,
   stateHeader,
-  is3d = false,
+  is3d = true,
   bubbleSizeMultiplier = 1,
 }: GibbsPlotProps) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -296,7 +296,7 @@ export const GibbsPlot = React.memo(({
   }, [displayData, pointColors, pointSizes, getPointKey, stateHeader, type, is3d, bubbleSizeMultiplier]);
 
   return (
-    <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 flex flex-col items-center shadow-lg transition-colors duration-300 relative group">
+    <div className="bg-transparent p-6 flex flex-col items-center shadow-none transition-colors duration-300 relative group">
       <div className="absolute top-4 right-4 opacity-80 group-hover:opacity-100 transition-opacity z-10 flex gap-2">
         <div className="flex items-center gap-1 bg-slate-100 rounded-lg px-1.5 py-0.5 border border-slate-200 shadow-sm">
           <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider pl-0.5">Title 3D:</span>
@@ -345,7 +345,7 @@ export const GibbsPlot = React.memo(({
         />
       )}
 
-      <div id={exportId} className="flex flex-col items-center justify-center bg-white p-0 w-full rounded-2xl relative">
+      <div id={exportId} className="flex flex-col items-center justify-center bg-transparent p-0 w-full rounded-2xl relative">
         {/* Draggable/Resizable Crop Box overlay */}
         {isCropActive && (
           <div

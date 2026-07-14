@@ -134,9 +134,9 @@ export default function MasterSummaryView({
       groupMap[key].samples.push(row);
     });
 
-    const globalStats: Record<string, { analyzed: number; above: number; affectedSubGroups: Set<string> }> = {};
+    const globalStats: Record<string, { analyzed: number; above: number; affectedSubGroups: Set<string>; affectedSubGroupsSum: number }> = {};
     activeParams.forEach((p) => {
-      globalStats[p] = { analyzed: 0, above: 0, affectedSubGroups: new Set() };
+      globalStats[p] = { analyzed: 0, above: 0, affectedSubGroups: new Set(), affectedSubGroupsSum: 0 };
     });
 
     // Sort groups
@@ -240,6 +240,7 @@ export default function MasterSummaryView({
         // Accumulate statistics
         globalStats[paramName]!.analyzed += analyzed;
         globalStats[paramName]!.above += above;
+        globalStats[paramName]!.affectedSubGroupsSum += affectedSubGroups.size;
         affectedSubGroups.forEach((v) => globalStats[paramName]!.affectedSubGroups.add(v));
       });
 
@@ -285,7 +286,7 @@ export default function MasterSummaryView({
 
         grandCells.push(
           <td key={`${pIdx}-d`} className="p-3 border border-slate-700 text-center font-mono text-xs font-bold text-amber-300">
-            {stats.affectedSubGroups.size}
+            {stats.affectedSubGroupsSum}
           </td>
         );
         grandCells.push(
@@ -383,9 +384,9 @@ export default function MasterSummaryView({
 
     // Row 5 onwards: Data
     let slNo = 1;
-    const globalStats: Record<string, { analyzed: number; above: number; affectedSubGroups: Set<string> }> = {};
+    const globalStats: Record<string, { analyzed: number; above: number; affectedSubGroups: Set<string>; affectedSubGroupsSum: number }> = {};
     activeParams.forEach((p) => {
-      globalStats[p] = { analyzed: 0, above: 0, affectedSubGroups: new Set() };
+      globalStats[p] = { analyzed: 0, above: 0, affectedSubGroups: new Set(), affectedSubGroupsSum: 0 };
     });
 
     sortedGroupKeys.forEach((key) => {
@@ -436,6 +437,7 @@ export default function MasterSummaryView({
 
         globalStats[paramName]!.analyzed += analyzed;
         globalStats[paramName]!.above += above;
+        globalStats[paramName]!.affectedSubGroupsSum += affectedSubGroups.size;
         affectedSubGroups.forEach((v) => globalStats[paramName]!.affectedSubGroups.add(v));
       });
 
@@ -449,7 +451,7 @@ export default function MasterSummaryView({
     activeParams.forEach((paramName) => {
       const stats = globalStats[paramName]!;
       const pct = stats.analyzed > 0 ? (stats.above / stats.analyzed) * 100 : 0;
-      grandRow.push(stats.analyzed, stats.above, `${pct.toFixed(2)}%`, stats.affectedSubGroups.size, "-");
+      grandRow.push(stats.analyzed, stats.above, `${pct.toFixed(2)}%`, stats.affectedSubGroupsSum, "-");
     });
     sheetData.push(grandRow);
 
