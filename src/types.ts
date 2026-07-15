@@ -27,6 +27,7 @@ export interface DataHeaders {
   year?: string;
   season?: string;
   aquifer?: string;
+  source?: string;
   params: string[];
 }
 

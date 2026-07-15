@@ -114,6 +114,7 @@ export default function App() {
     latitude: "Latitude",
     year: "Year",
     season: "Season",
+    source: "Source",
     params: ["pH", "TDS", "TH", "EC", "Cl", "NO3", "F"]
   });
   const [headerMap, setHeaderMap] = useState<Record<string, string>>({
@@ -231,6 +232,7 @@ export default function App() {
       year: find(["Year", "year"]),
       season: find(["Season", "season"]),
       aquifer: find(["Aquifer", "Aquifer Type", "Aquifer_Type", "Aquifer Name", "Aquifer_Name"]),
+      source: find(["Source", "Well Type", "Well_Type", "Source Type", "Source_Type", "Water Source", "Water_Source", "src"]),
       params: [],
     };
 
@@ -241,7 +243,7 @@ export default function App() {
       if (!header || typeof header !== "string") return;
       if (knownKeys.includes(header)) return;
       const hLower = header.toLowerCase().trim();
-      const staticKeywords = ["location", "lat", "lon", "district", "state", "block", "village", "well", "sl. no", "serial", "unit"];
+      const staticKeywords = ["location", "lat", "lon", "district", "state", "block", "village", "well", "sl. no", "serial", "unit", "source"];
       if (staticKeywords.some((sw) => hLower.includes(sw))) return;
 
       const matchedKey = Object.keys(PARAM_CONFIG).find((key) => {
@@ -982,32 +984,6 @@ export default function App() {
               </div>
             </div>
           </div>
-
-          {/* Action triggers & READY Indicator */}
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-center sm:justify-start md:justify-end">
-            {/* READY Glossy Button Capsule */}
-            <div className={`text-white font-extrabold text-xs tracking-widest px-5 py-2 rounded-full select-none animate-pulse flex items-center justify-center min-w-[75px] border transition-all duration-300 ${
-              rawData.length > 0 
-                ? "bg-gradient-to-b from-blue-500 to-blue-700 shadow-[0_4px_10px_rgba(59,130,246,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2),inset_0_2px_4px_rgba(255,255,255,0.3)] border-blue-600/50" 
-                : "bg-gradient-to-b from-red-500 to-red-700 shadow-[0_4px_10px_rgba(239,68,68,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2),inset_0_2px_4px_rgba(255,255,255,0.3)] border-red-600/50"
-            }`}>
-              READY
-            </div>
-
-
-            <label className="cursor-pointer glossy-btn-dark px-5 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 select-none shadow-sm">
-              <UploadCloud className="w-3.5 h-3.5 text-slate-300" /> Upload Excel or CSV Data
-              <input type="file" onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
-            </label>
-            {rawData.length > 0 && (
-              <button
-                onClick={handleExportIndividual}
-                className="glossy-btn-emerald px-5 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 shadow-sm"
-              >
-                <Download className="w-3.5 h-3.5 text-white" /> Export Styled Report
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Global Geographical Filter Strip when data is present */}
@@ -1095,30 +1071,58 @@ export default function App() {
         )}
 
         {/* Responsive Mobile Tab Select Dropdown */}
-        <div className="md:hidden mb-6">
-          <label className="text-[10px] font-black text-indigo-650 uppercase tracking-widest block mb-2 drop-shadow-sm">
-            Primary Navigation Module
-          </label>
-          <select
-            value={activeTab}
-            onChange={(e) => setActiveTab(e.target.value as any)}
-            className="w-full glossy-input rounded-2xl p-4 font-black text-slate-700 bg-white cursor-pointer select-none text-sm border-2 border-slate-200 outline-none focus:border-indigo-500 shadow-md transition-all"
-          >
-            <option value="single">📊 Detailed Analysis</option>
-            <option value="ranking">📈 Ranking Stats</option>
-            <option value="ussl">📈 USSL & Piper Diagram</option>
-            <option value="combination">🧬 Combination Analysis</option>
-            <option value="pca">📊 PCA Analysis</option>
-            <option value="hydrochemistry">📋 Hydrochemistry Sheet</option>
-            <option value="gis">🌍 Geospatial Map Module</option>
-            <option value="master">📋 Master Summary Matrix</option>
-            <option value="monsoon">🌧️ Dynamic Impact of Monsoon</option>
-            <option value="bar">📊 Comparative Exceedance (Bar)</option>
-            <option value="aisummary">📄 District Pamphlet</option>
-            <option value="bulletin">📰 Annual Ground Water Quality Report</option>
-            <option value="fortnightly">🔔 Fortnightly Quality Alerts</option>
-            <option value="limits">⚙️ Parameter Limits Manager</option>
-          </select>
+        <div className="md:hidden mb-6 flex flex-col gap-3">
+          <div>
+            <label className="text-[10px] font-black text-indigo-650 uppercase tracking-widest block mb-2 drop-shadow-sm">
+              Primary Navigation Module
+            </label>
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as any)}
+              className="w-full glossy-input rounded-2xl p-4 font-black text-slate-700 bg-white cursor-pointer select-none text-sm border-2 border-slate-200 outline-none focus:border-indigo-500 shadow-md transition-all"
+            >
+              <option value="single">📊 Detailed Analysis</option>
+              <option value="ranking">📈 Ranking Stats</option>
+              <option value="ussl">📈 USSL & Piper Diagram</option>
+              <option value="combination">🧬 Combination Analysis</option>
+              <option value="pca">📊 PCA Analysis</option>
+              <option value="hydrochemistry">📋 Hydrochemistry Sheet</option>
+              <option value="gis">🌍 Geospatial Map Module</option>
+              <option value="master">📋 Master Summary Matrix</option>
+              <option value="monsoon">🌧️ Dynamic Impact of Monsoon</option>
+              <option value="bar">📊 Comparative Exceedance (Bar)</option>
+              <option value="aisummary">📄 District Pamphlet</option>
+              <option value="bulletin">📰 Annual Ground Water Quality Report</option>
+              <option value="fortnightly">🔔 Fortnightly Quality Alerts</option>
+              <option value="limits">⚙️ Parameter Limits Manager</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {rawData.length > 0 && (
+              <button
+                onClick={handleExportIndividual}
+                className="w-full glossy-btn-emerald px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm text-white"
+              >
+                <Download className="w-3.5 h-3.5 text-white" /> Export Styled Report
+              </button>
+            )}
+
+            <div className="flex items-center gap-2.5">
+              <div className={`text-white font-extrabold text-[10px] tracking-widest px-4 py-2.5 rounded-xl select-none animate-pulse flex items-center justify-center min-w-[70px] border transition-all duration-300 ${
+                rawData.length > 0 
+                  ? "bg-gradient-to-b from-blue-500 to-blue-700 shadow-[0_4px_10px_rgba(59,130,246,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2),inset_0_2px_4px_rgba(255,255,255,0.3)] border-blue-600/50" 
+                  : "bg-gradient-to-b from-red-500 to-red-700 shadow-[0_4px_10px_rgba(239,68,68,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2),inset_0_2px_4px_rgba(255,255,255,0.3)] border-red-600/50"
+              }`}>
+                READY
+              </div>
+
+              <label className="flex-1 cursor-pointer glossy-btn-dark px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 select-none shadow-sm border border-slate-300 bg-slate-900 text-white hover:bg-slate-800">
+                <UploadCloud className="w-3.5 h-3.5 text-slate-300 animate-pulse" /> Upload Excel or CSV
+                <input type="file" onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
+              </label>
+            </div>
+          </div>
         </div>
 
         {/* Desktop Tab Controls Bar */}
@@ -1212,6 +1216,34 @@ export default function App() {
               </button>
             );
           })}
+
+          {/* Separation line for clear visual layout */}
+          <div className="h-8 w-[2px] bg-slate-200 self-center mx-2 hidden xl:block" />
+
+          {/* Desktop Right Action Panel - Side by side with Limits Manager */}
+          <div className="flex items-center gap-3 ml-auto">
+            {rawData.length > 0 && (
+              <button
+                onClick={handleExportIndividual}
+                className="glossy-btn-emerald px-4 py-2 rounded-2xl font-bold text-xs flex items-center gap-2 shadow-sm text-white"
+              >
+                <Download className="w-3.5 h-3.5 text-white" /> Export Styled Report
+              </button>
+            )}
+
+            <div className={`text-white font-extrabold text-[11px] tracking-widest px-4 py-2 rounded-2xl select-none animate-pulse flex items-center justify-center min-w-[75px] border transition-all duration-300 ${
+              rawData.length > 0 
+                ? "bg-gradient-to-b from-blue-500 to-blue-700 shadow-[0_4px_10px_rgba(59,130,246,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2),inset_0_2px_4px_rgba(255,255,255,0.3)] border-blue-600/50" 
+                : "bg-gradient-to-b from-red-500 to-red-700 shadow-[0_4px_10px_rgba(239,68,68,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2),inset_0_2px_4px_rgba(255,255,255,0.3)] border-red-600/50"
+            }`}>
+              READY
+            </div>
+
+            <label className="cursor-pointer glossy-btn-dark px-4 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 select-none shadow-sm border border-slate-300 bg-slate-900 hover:bg-slate-800 text-white transition-all">
+              <UploadCloud className="w-3.5 h-3.5 text-slate-300" /> Upload Excel or CSV
+              <input type="file" onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
+            </label>
+          </div>
         </div>
 
         {/* Tab Canvas Content Blocks */}

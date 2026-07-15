@@ -229,6 +229,124 @@ export function scaleSvgStringToHighRes(svgStr: string, targetW: number, targetH
 }
 
 /**
+ * Trims transparent and white margins from an HTML5 canvas to tightly fit the content.
+ */
+function cropCanvasToContent(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  let imgData;
+  try {
+    imgData = ctx.getImageData(0, 0, w, h);
+  } catch (e) {
+    console.error("getImageData failed (likely CORS or empty canvas):", e);
+    return canvas;
+  }
+  const data = imgData.data;
+
+  let minX = w;
+  let minY = h;
+  let maxX = 0;
+  let maxY = 0;
+  let hasContent = false;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const a = data[idx + 3];
+
+      // Pixel is non-blank if it is NOT transparent and NOT pure white
+      const isTransparent = a < 15;
+      const isWhite = r > 252 && g > 252 && b > 252 && a > 200;
+
+      if (!isTransparent && !isWhite) {
+        hasContent = true;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (!hasContent) {
+    return canvas;
+  }
+
+  // Tight crop margin around content
+  const padding = 6;
+  minX = Math.max(0, minX - padding);
+  minY = Math.max(0, minY - padding);
+  maxX = Math.min(w - 1, maxX + padding);
+  maxY = Math.min(h - 1, maxY + padding);
+
+  const croppedW = maxX - minX + 1;
+  const croppedH = maxY - minY + 1;
+
+  if (croppedW <= 0 || croppedH <= 0) {
+    return canvas;
+  }
+
+  const croppedCanvas = document.createElement("canvas");
+  croppedCanvas.width = croppedW;
+  croppedCanvas.height = croppedH;
+  const croppedCtx = croppedCanvas.getContext("2d");
+  if (!croppedCtx) return canvas;
+
+  croppedCtx.drawImage(
+    canvas,
+    minX,
+    minY,
+    croppedW,
+    croppedH,
+    0,
+    0,
+    croppedW,
+    croppedH
+  );
+
+  return croppedCanvas;
+}
+
+/**
+ * Converts a Base64 encoded SVG string to a cropped PNG Base64 string.
+ */
+function convertSvgToCroppedPng(base64Svg: string, width: number, height: number): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(base64Svg);
+          return;
+        }
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const croppedCanvas = cropCanvasToContent(canvas);
+        resolve(croppedCanvas.toDataURL("image/png"));
+      } catch (err) {
+        console.error("Failed to crop SVG to PNG:", err);
+        resolve(base64Svg);
+      }
+    };
+    img.onerror = () => {
+      resolve(base64Svg);
+    };
+    img.src = base64Svg;
+  });
+}
+
+/**
  * Pure offline base64 PNG rendering engine for Highcharts.
  * Perfect for embedding customized chart data inside exported Microsoft Word reports.
  */
@@ -362,7 +480,7 @@ export async function generateOfflineChartBase64(
         cleanSvg = cleanSvg.replace(/<svg/i, `<svg viewBox="0 0 ${width} ${height}"`);
       }
       const base64Svg = "data:image/svg+xml;base64," + safeStringToBase64(cleanSvg);
-      resolve(base64Svg);
+      convertSvgToCroppedPng(base64Svg, width, height).then(resolve);
       return;
     } catch (e) {
       console.error("Ultimate chart helpers catch crashed safely.", e);
@@ -376,7 +494,8 @@ export async function generateOfflineChartBase64(
       try {
         const ultimateSvg = generateFallbackSvg(options, width, height);
         const sanUltimate = sanitizeSvgStringForCanvas(ultimateSvg);
-        resolve("data:image/svg+xml;base64," + safeStringToBase64(sanUltimate));
+        const base64Svg = "data:image/svg+xml;base64," + safeStringToBase64(sanUltimate);
+        convertSvgToCroppedPng(base64Svg, width, height).then(resolve);
       } catch (_) {
         resolve("");
       }
@@ -404,6 +523,10 @@ export function buildColumnsChartOptions(title: string, categories: string[], da
       type: "column",
       backgroundColor: "transparent",
       plotBackgroundColor: "transparent",
+      spacingTop: 10,
+      spacingBottom: 10,
+      spacingLeft: 5,
+      spacingRight: 5,
     },
     title: {
       text: title,
@@ -448,7 +571,7 @@ export function buildDonutChartOptions(title: string, dataPoints: any[], size = 
   const finalSize = size; // Use the specified size directly to match detailed analysis and look larger
   const textColor = isDarkTheme ? "#f8fafc" : "#1e293b";
   const isSarOrRsc = /SAR|RSC|Sodium Adsorption Ratio|Residual Sodium Carbonate/i.test(title);
-  const titleFontSize = isSarOrRsc ? "18pt" : "12pt"; // 50% increase from 12pt is 18pt
+  const titleFontSize = "12pt"; // Force title font to exactly 12pt Times New Roman as requested
   const labelFontSize = isSarOrRsc ? "16pt" : "12pt"; // Crisper and 50% larger than 10pt base
   
   return {
@@ -462,12 +585,17 @@ export function buildDonutChartOptions(title: string, dataPoints: any[], size = 
       },
       backgroundColor: "transparent",
       plotBackgroundColor: "transparent",
+      spacingTop: 10,
+      spacingBottom: 10,
+      spacingLeft: 5,
+      spacingRight: 5,
       style: {
         fontFamily: "'Times New Roman', Times, serif"
       }
     },
     title: {
       text: title,
+      margin: 7, // Reduce space between title and donut plot area by ~50% (default is 15)
       style: { 
         fontSize: titleFontSize, 
         fontWeight: "bold", 
@@ -488,7 +616,10 @@ export function buildDonutChartOptions(title: string, dataPoints: any[], size = 
         dataLabels: {
           enabled: true,
           useHTML: false,
-          format: '{point.name}: {point.percentage:.1f}% ({point.y})',
+          formatter: function (this: any) {
+            const color = this.point?.color || this.color || (isDarkTheme ? "#f8fafc" : "#0f172a");
+            return `<span style="color: ${color}; fill: ${color}; font-weight: bold; font-family: 'Times New Roman', Times, serif;">${this.point.name}<br/>${this.point.percentage.toFixed(1)}% (${this.point.y})</span>`;
+          },
           distance: 15, // Brings labels slightly closer to avoid being pushed off/clipped on the canvas edges
           crop: false, // Ensure labels never get clipped by the plot boundary
           overflow: "allow", // Ensure labels can occupy extra margin space safely
@@ -499,7 +630,6 @@ export function buildDonutChartOptions(title: string, dataPoints: any[], size = 
             fontSize: labelFontSize, 
             fontWeight: "bold",
             fontStyle: "italic", // Bold + Italic as requested
-            color: isDarkTheme ? "#f8fafc" : "#0f172a",
             textOutline: "none", 
           },
         },

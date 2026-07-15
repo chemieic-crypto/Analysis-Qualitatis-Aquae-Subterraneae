@@ -62,7 +62,77 @@ export interface ShapefileLayer {
   labelKey: string;
   labelColor: string;
   labelSize: number;
+  colorAttribute?: string;
+  colorMapping?: Record<string, string>;
+  showStroke?: boolean;
+  showInLegend?: boolean;
 }
+
+// Default colors for principal aquifer shapefile
+const DEFAULT_AQUIFER_COLORS: Record<string, string> = {
+  "alluvium": "#ffffd0",     // 255 255 208
+  "laterite": "#ff9e30",     // 255 158 48
+  "basalt": "#d0ffe8",       // 208 255 232
+  "sandstone": "#b0ffb0",    // 176 255 176
+  "shale": "#ffb0b0",        // 255 176 176
+  "limestone": "#ffd040",    // 255 208 64
+  "granite": "#70a0ff",      // 112 160 255
+  "schist": "#dee000",       // 222 224 0
+  "quartzite": "#c890ff",    // 200 144 255
+  "charnockite": "#ffd0ff",  // 255 208 255
+  "khondalite": "#7dd000",   // 125 208 0
+  "bgc": "#ffd8b0",          // 255 216 176
+  "gneiss": "#d0d0ff",       // 208 208 255
+  "intrusives": "#60cbff"    // 96 203 255
+};
+
+const getInitialColorMapping = (geojson: any, attribute: string): Record<string, string> => {
+  const mapping: Record<string, string> = {};
+  const features = geojson.features || (geojson.type === "Feature" ? [geojson] : []);
+  
+  const defaultPalette = [
+    "#60a5fa", "#34d399", "#f87171", "#fbbf24", "#a78bfa", "#2dd4bf", "#f472b6",
+    "#93c5fd", "#6ee7b7", "#fca5a5", "#fde047", "#c084fc", "#5eead4", "#f9a8d4"
+  ];
+  let paletteIdx = 0;
+
+  features.forEach((f: any) => {
+    if (f && f.properties && f.properties[attribute] !== undefined) {
+      const val = String(f.properties[attribute]).trim();
+      if (!val || mapping[val]) return;
+
+      const valLower = val.toLowerCase();
+      const foundKey = Object.keys(DEFAULT_AQUIFER_COLORS).find(k => 
+        valLower === k || valLower.includes(k) || k.includes(valLower)
+      );
+      if (foundKey) {
+        mapping[val] = DEFAULT_AQUIFER_COLORS[foundKey];
+      } else {
+        mapping[val] = defaultPalette[paletteIdx % defaultPalette.length];
+        paletteIdx++;
+      }
+    }
+  });
+  return mapping;
+};
+
+const getFeatureFillColor = (layer: ShapefileLayer, feature: any): string => {
+  if (layer.colorAttribute && feature && feature.properties) {
+    const val = String(feature.properties[layer.colorAttribute] || "").trim();
+    if (layer.colorMapping && layer.colorMapping[val]) {
+      return layer.colorMapping[val];
+    }
+    // Check if there is any case-insensitive or partial match in default colors
+    const valLower = val.toLowerCase();
+    const foundKey = Object.keys(DEFAULT_AQUIFER_COLORS).find(k => 
+      valLower === k || valLower.includes(k) || k.includes(valLower)
+    );
+    if (foundKey) {
+      return DEFAULT_AQUIFER_COLORS[foundKey];
+    }
+  }
+  return layer.fillColor || "#3b82f6";
+};
 
 // Color schemes definitions
 const COLOR_SCHEMES = {
@@ -787,6 +857,11 @@ export default function GisMapView({
   const [shapeFillColor, setShapeFillColor] = useState<string>("#60a5fa");
   const [shapeFillOpacity, setShapeFillOpacity] = useState<number>(15);
   const [showShapefile, setShowShapefile] = useState<boolean>(true);
+  const [showShapefileInLegend, setShowShapefileInLegend] = useState<boolean>(true);
+  const [legendColumns, setLegendColumns] = useState<number>(1);
+  const [shapefileLegendFontSize, setShapefileLegendFontSize] = useState<number>(7.5);
+  const [shapefileLegendTextColor, setShapefileLegendTextColor] = useState<string>("#475569");
+  const [showGlobalShapefileOutline, setShowGlobalShapefileOutline] = useState<boolean>(true);
   const [fitToShapefile, setFitToShapefile] = useState<boolean>(false);
   const [panelBackgroundStyle, setPanelBackgroundStyle] = useState<"translucent-light" | "translucent-dark" | "transparent-glass" | "solid-light" | "solid-dark">("translucent-light");
 
@@ -1192,20 +1267,22 @@ export default function GisMapView({
     }
 
     // 4. Check click on Legend
-    let legX = currentWidth - margin - 170 * dpr;
-    let legY = currentHeight - margin - 110 * dpr;
-    if (legendPos === "top-left") { legX = margin + 15 * dpr; legY = margin + 15 * dpr; }
-    else if (legendPos === "top-right") { legX = currentWidth - margin - 170 * dpr; legY = margin + 15 * dpr; }
-    else if (legendPos === "bottom-left") { legX = margin + 15 * dpr; legY = currentHeight - margin - 110 * dpr; }
-
-    legX += legendOffsetX * dpr;
-    legY += legendOffsetY * dpr;
-
+    let legendWidthVal = 155;
     const visibleLayersForLeg = layers.filter(l => l.visible);
     let extraBoundaryHeight = 0;
     if (showShapefile) {
       if (visibleLayersForLeg.length > 0) {
-        extraBoundaryHeight = visibleLayersForLeg.length * 15;
+        const hasColorMappings = visibleLayersForLeg.some(l => l.colorAttribute && l.colorMapping && Object.keys(l.colorMapping).length > 0);
+        if (hasColorMappings) {
+          legendWidthVal = 195;
+        }
+        visibleLayersForLeg.forEach(layer => {
+          if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
+            extraBoundaryHeight += Object.keys(layer.colorMapping).length * 15;
+          } else {
+            extraBoundaryHeight += 15;
+          }
+        });
       } else if (uploadedGeoJson) {
         const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
         if (label) {
@@ -1214,7 +1291,16 @@ export default function GisMapView({
       }
     }
     const legendHeight = (95 + extraBoundaryHeight) * dpr;
-    const legendWidth = 155 * dpr;
+    const legendWidth = legendWidthVal * dpr;
+
+    let legX = currentWidth - margin - (legendWidthVal + 15) * dpr;
+    let legY = currentHeight - margin - 110 * dpr;
+    if (legendPos === "top-left") { legX = margin + 15 * dpr; legY = margin + 15 * dpr; }
+    else if (legendPos === "top-right") { legX = currentWidth - margin - (legendWidthVal + 15) * dpr; legY = margin + 15 * dpr; }
+    else if (legendPos === "bottom-left") { legX = margin + 15 * dpr; legY = currentHeight - margin - 110 * dpr; }
+
+    legX += legendOffsetX * dpr;
+    legY += legendOffsetY * dpr;
 
     if (clickX >= legX && clickX <= legX + legendWidth && clickY >= legY && clickY <= legY + legendHeight) {
       setDraggedElement("legend");
@@ -1424,6 +1510,41 @@ export default function GisMapView({
     setDraggedLabel(null);
     setDraggedElement(null);
     setDraggedPanelId(null);
+  };
+
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 0.85 : 1.15;
+      setZoomScaleFactor(z => {
+        const newZ = z * zoomFactor;
+        return Math.max(0.005, Math.min(20.0, newZ));
+      });
+    };
+
+    const canvasLeft = canvasRefLeft.current;
+    const canvasRight = canvasRefRight.current;
+
+    if (canvasLeft) {
+      canvasLeft.addEventListener("wheel", handleWheel, { passive: false });
+    }
+    if (canvasRight) {
+      canvasRight.addEventListener("wheel", handleWheel, { passive: false });
+    }
+
+    return () => {
+      if (canvasLeft) {
+        canvasLeft.removeEventListener("wheel", handleWheel);
+      }
+      if (canvasRight) {
+        canvasRight.removeEventListener("wheel", handleWheel);
+      }
+    };
+  }, [canvasRefLeft.current, canvasRefRight.current]);
+
+  const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Zoom in on double click
+    setZoomScaleFactor(z => Math.max(0.005, z * 0.7));
   };
 
   // Custom Title & Subtitle customizable strings
@@ -1872,15 +1993,19 @@ export default function GisMapView({
         : parsedData;
 
       if (validPoints.length === 0) {
+        const defaultCenterLat = 23 + panOffsetLat;
+        const defaultCenterLng = 82 + panOffsetLng;
+        const defaultLngSpan = 29.3 * zoomScaleFactor;
+        const defaultLatSpan = 29.2 * zoomScaleFactor;
         return {
-          mapMinLng: 68.1 + panOffsetLng,
-          mapMaxLng: 97.4 + panOffsetLng,
-          mapMinLat: 8.4 + panOffsetLat,
-          mapMaxLat: 37.6 + panOffsetLat,
-          finalLngSpan: 29.3,
-          finalLatSpan: 29.2,
-          centerLat: 23 + panOffsetLat,
-          centerLng: 82 + panOffsetLng
+          mapMinLng: defaultCenterLng - defaultLngSpan / 2,
+          mapMaxLng: defaultCenterLng + defaultLngSpan / 2,
+          mapMinLat: defaultCenterLat - defaultLatSpan / 2,
+          mapMaxLat: defaultCenterLat + defaultLatSpan / 2,
+          finalLngSpan: defaultLngSpan,
+          finalLatSpan: defaultLatSpan,
+          centerLat: defaultCenterLat,
+          centerLng: defaultCenterLng
         };
       }
 
@@ -2592,7 +2717,7 @@ export default function GisMapView({
           ctx.globalAlpha = rasterOpacity / 100;
           
           // Smooth bilinear rendering when drawing onto high-resolution raster
-          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingEnabled = smoothBlending;
           ctx.imageSmoothingQuality = "high";
           
           const xMin = getX(baseMapExtent.mapMinLng);
@@ -2686,7 +2811,7 @@ export default function GisMapView({
           if (!layer.visible) return;
           ctx.save();
           
-          const drawPolygonRing = (ring: number[][]) => {
+          const drawPolygonRing = (ring: number[][], customFill: string) => {
             if (ring.length === 0) return;
             ctx.beginPath();
             const startX = getX(ring[0][0]);
@@ -2696,22 +2821,26 @@ export default function GisMapView({
               ctx.lineTo(getX(ring[i][0]), getY(ring[i][1]));
             }
             ctx.closePath();
-            ctx.fillStyle = layer.fillColor;
+            ctx.fillStyle = customFill;
             ctx.globalAlpha = layer.fillOpacity / 100;
             ctx.fill();
-            ctx.strokeStyle = layer.strokeColor;
-            ctx.lineWidth = layer.strokeWidth * scale;
-            ctx.globalAlpha = 1.0;
-            ctx.stroke();
+            if (layer.showStroke !== false) {
+              ctx.strokeStyle = layer.strokeColor;
+              ctx.lineWidth = layer.strokeWidth * scale;
+              ctx.globalAlpha = 1.0;
+              ctx.stroke();
+            }
           };
 
-          const drawFeatureGeometry = (geom: any) => {
+          const drawFeatureGeometry = (geom: any, f: any) => {
             if (!geom) return;
+            const customFill = getFeatureFillColor(layer, f);
+
             if (geom.type === "Polygon") {
-              geom.coordinates.forEach((ring: number[][]) => drawPolygonRing(ring));
+              geom.coordinates.forEach((ring: number[][]) => drawPolygonRing(ring, customFill));
             } else if (geom.type === "MultiPolygon") {
               geom.coordinates.forEach((poly: number[][][]) => {
-                poly.forEach((ring: number[][]) => drawPolygonRing(ring));
+                poly.forEach((ring: number[][]) => drawPolygonRing(ring, customFill));
               });
             } else if (geom.type === "LineString") {
               ctx.beginPath();
@@ -2720,9 +2849,11 @@ export default function GisMapView({
                 for (let i = 1; i < geom.coordinates.length; i++) {
                   ctx.lineTo(getX(geom.coordinates[i][0]), getY(geom.coordinates[i][1]));
                 }
-                ctx.strokeStyle = layer.strokeColor;
-                ctx.lineWidth = layer.strokeWidth * scale;
-                ctx.stroke();
+                if (layer.showStroke !== false) {
+                  ctx.strokeStyle = layer.strokeColor;
+                  ctx.lineWidth = layer.strokeWidth * scale;
+                  ctx.stroke();
+                }
               }
             } else if (geom.type === "MultiLineString") {
               geom.coordinates.forEach((line: number[][]) => {
@@ -2732,9 +2863,11 @@ export default function GisMapView({
                   for (let i = 1; i < line.length; i++) {
                     ctx.lineTo(getX(line[i][0]), getY(line[i][1]));
                   }
-                  ctx.strokeStyle = layer.strokeColor;
-                  ctx.lineWidth = layer.strokeWidth * scale;
-                  ctx.stroke();
+                  if (layer.showStroke !== false) {
+                    ctx.strokeStyle = layer.strokeColor;
+                    ctx.lineWidth = layer.strokeWidth * scale;
+                    ctx.stroke();
+                  }
                 }
               });
             } else if (geom.type === "Point") {
@@ -2742,24 +2875,24 @@ export default function GisMapView({
               const py = getY(geom.coordinates[1]);
               ctx.beginPath();
               ctx.arc(px, py, 4 * scale, 0, Math.PI * 2);
-              ctx.fillStyle = layer.fillColor;
+              ctx.fillStyle = customFill;
               ctx.fill();
               ctx.strokeStyle = layer.strokeColor;
               ctx.lineWidth = layer.strokeWidth * scale;
               ctx.stroke();
             } else if (geom.type === "GeometryCollection") {
-              geom.geometries?.forEach((g: any) => drawFeatureGeometry(g));
+              geom.geometries?.forEach((g: any) => drawFeatureGeometry(g, f));
             }
           };
 
           const gj = layer.geoJson;
           if (gj) {
             if (gj.type === "FeatureCollection") {
-              gj.features?.forEach((f: any) => drawFeatureGeometry(f.geometry));
+              gj.features?.forEach((f: any) => drawFeatureGeometry(f.geometry, f));
             } else if (gj.type === "Feature") {
-              drawFeatureGeometry(gj.geometry);
+              drawFeatureGeometry(gj.geometry, gj);
             } else {
-              drawFeatureGeometry(gj);
+              drawFeatureGeometry(gj, null);
             }
           }
           ctx.restore();
@@ -2780,10 +2913,12 @@ export default function GisMapView({
           ctx.fillStyle = shapeFillColor;
           ctx.globalAlpha = shapeFillOpacity / 100;
           ctx.fill();
-          ctx.strokeStyle = shapeStrokeColor;
-          ctx.lineWidth = shapeStrokeWidth * scale;
-          ctx.globalAlpha = 1.0;
-          ctx.stroke();
+          if (showGlobalShapefileOutline !== false) {
+            ctx.strokeStyle = shapeStrokeColor;
+            ctx.lineWidth = shapeStrokeWidth * scale;
+            ctx.globalAlpha = 1.0;
+            ctx.stroke();
+          }
         };
 
         const drawFeatureGeometry = (geom: any) => {
@@ -2801,9 +2936,11 @@ export default function GisMapView({
               for (let i = 1; i < geom.coordinates.length; i++) {
                 ctx.lineTo(getX(geom.coordinates[i][0]), getY(geom.coordinates[i][1]));
               }
-              ctx.strokeStyle = shapeStrokeColor;
-              ctx.lineWidth = shapeStrokeWidth * scale;
-              ctx.stroke();
+              if (showGlobalShapefileOutline !== false) {
+                ctx.strokeStyle = shapeStrokeColor;
+                ctx.lineWidth = shapeStrokeWidth * scale;
+                ctx.stroke();
+              }
             }
           } else if (geom.type === "MultiLineString") {
             geom.coordinates.forEach((line: number[][]) => {
@@ -2813,9 +2950,11 @@ export default function GisMapView({
                 for (let i = 1; i < line.length; i++) {
                   ctx.lineTo(getX(line[i][0]), getY(line[i][1]));
                 }
-                ctx.strokeStyle = shapeStrokeColor;
-                ctx.lineWidth = shapeStrokeWidth * scale;
-                ctx.stroke();
+                if (showGlobalShapefileOutline !== false) {
+                  ctx.strokeStyle = shapeStrokeColor;
+                  ctx.lineWidth = shapeStrokeWidth * scale;
+                  ctx.stroke();
+                }
               }
             });
           } else if (geom.type === "Point") {
@@ -3115,21 +3254,23 @@ export default function GisMapView({
       );
       ctx.restore();
     }
-    let legX = w - margin - 170 * scale;
-    let legY = h - margin - 110 * scale;
-    if (legendPos === "top-left") { legX = margin + 15 * scale; legY = margin + 15 * scale; }
-    else if (legendPos === "top-right") { legX = w - margin - 170 * scale; legY = margin + 15 * scale; }
-    else if (legendPos === "bottom-left") { legX = margin + 15 * scale; legY = h - margin - 110 * scale; }
-
-    // Apply Precise Position Offsets (User adjustable fine element positioning)
-    legX += legendOffsetX * scale;
-    legY += legendOffsetY * scale;
-
+    let legendWidthVal = legendWidth;
     const visibleLayers = layers.filter(l => l.visible);
     let extraBoundaryHeight = 0;
-    if (showShapefile) {
+    if (showShapefile && showShapefileInLegend) {
       if (visibleLayers.length > 0) {
-        extraBoundaryHeight = visibleLayers.length * 15;
+        const hasColorMappings = visibleLayers.some(l => l.colorAttribute && l.colorMapping && Object.keys(l.colorMapping).length > 0);
+        if (hasColorMappings && legendWidthVal < 195) {
+          legendWidthVal = 195;
+        }
+        visibleLayers.forEach(layer => {
+          if (layer.showInLegend === false) return;
+          if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
+            extraBoundaryHeight += Object.keys(layer.colorMapping).length * 15;
+          } else {
+            extraBoundaryHeight += 15;
+          }
+        });
       } else if (uploadedGeoJson) {
         const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
         if (label) {
@@ -3137,7 +3278,8 @@ export default function GisMapView({
         }
       }
     }
-    
+    const legendWidthFinal = legendWidthVal;
+
     let classCount = 3;
     const isStations = activeParamName === "STATIONS";
     if (!isStations && !(showPoints && showOnlyExceedingPoints && !isDifference)) {
@@ -3147,7 +3289,21 @@ export default function GisMapView({
         classCount = interpolationClasses;
       }
     }
-    const legendHeight = 95 + (classCount - 3) * legendRowSpacing + extraBoundaryHeight;
+    const numClassRows = isStations || (showPoints && showOnlyExceedingPoints && !isDifference)
+      ? 2
+      : Math.ceil(classCount / legendColumns);
+
+    const legendHeight = Math.max(95, 95 + (numClassRows - 3) * legendRowSpacing + extraBoundaryHeight + (isStations ? 10 : 0));
+
+    let legX = w - margin - (legendWidthFinal + 15) * scale;
+    let legY = h - margin - (legendHeight + 15) * scale;
+    if (legendPos === "top-left") { legX = margin + 15 * scale; legY = margin + 15 * scale; }
+    else if (legendPos === "top-right") { legX = w - margin - (legendWidthFinal + 15) * scale; legY = margin + 15 * scale; }
+    else if (legendPos === "bottom-left") { legX = margin + 15 * scale; legY = h - margin - (legendHeight + 15) * scale; }
+
+    // Apply Precise Position Offsets (User adjustable fine element positioning)
+    legX += legendOffsetX * scale;
+    legY += legendOffsetY * scale;
 
     ctx.save();
     // Glassmorphic shadow and layout for high density cards
@@ -3156,8 +3312,8 @@ export default function GisMapView({
     ctx.fillStyle = pStyle.bg;
     ctx.strokeStyle = pStyle.border;
     ctx.lineWidth = 1 * scale;
-    ctx.fillRect(legX, legY, legendWidth * scale, legendHeight * scale);
-    ctx.strokeRect(legX, legY, legendWidth * scale, legendHeight * scale);
+    ctx.fillRect(legX, legY, legendWidthFinal * scale, legendHeight * scale);
+    ctx.strokeRect(legX, legY, legendWidthFinal * scale, legendHeight * scale);
     ctx.shadowColor = "transparent"; // Reset shadow
 
     ctx.fillStyle = legendTextColor;
@@ -3235,6 +3391,8 @@ export default function GisMapView({
       ctx.restore();
 
       const colors = COLOR_SCHEMES[colorScheme as keyof typeof COLOR_SCHEMES] || COLOR_SCHEMES["Blue-Yellow-Red"];
+      const colWidth = (legendWidthFinal - 16) / legendColumns;
+
       if (isDifference) {
         // Diff classes
         const diffClasses = [
@@ -3243,11 +3401,16 @@ export default function GisMapView({
           { label: "Deteriorated (Post > Pre)", color: colorDiffDeteriorated }
         ];
         diffClasses.forEach((cls, i) => {
+          const colIndex = i % legendColumns;
+          const rowIndex = Math.floor(i / legendColumns);
+          const itemX = legX + (10 + colIndex * colWidth) * scale;
+          const itemY = legY + (32 + rowIndex * legendRowSpacing) * scale;
+
           ctx.fillStyle = cls.color;
-          ctx.fillRect(legX + 10 * scale, legY + (32 + i * legendRowSpacing) * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+          ctx.fillRect(itemX, itemY, legendBoxWidth * scale, legendBoxHeight * scale);
           ctx.fillStyle = legendTextColor;
           ctx.font = `${legendFontSize * scale}px ${mapFontFamily}`;
-          ctx.fillText(cls.label, legX + (10 + legendBoxWidth + 6) * scale, legY + (32 + i * legendRowSpacing + legendBoxHeight - 0.5) * scale);
+          ctx.fillText(cls.label, itemX + (legendBoxWidth + 6) * scale, itemY + (legendBoxHeight - 0.5) * scale);
         });
       } else {
         // Standard dynamic classes
@@ -3257,41 +3420,78 @@ export default function GisMapView({
           color: classColors[idx]
         }));
         classes.forEach((cls, i) => {
+          const colIndex = i % legendColumns;
+          const rowIndex = Math.floor(i / legendColumns);
+          const itemX = legX + (10 + colIndex * colWidth) * scale;
+          const itemY = legY + (32 + rowIndex * legendRowSpacing) * scale;
+
           ctx.fillStyle = cls.color;
-          ctx.fillRect(legX + 10 * scale, legY + (32 + i * legendRowSpacing) * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+          ctx.fillRect(itemX, itemY, legendBoxWidth * scale, legendBoxHeight * scale);
           ctx.fillStyle = legendTextColor;
           ctx.font = `${legendFontSize * scale}px ${mapFontFamily}`;
-          ctx.fillText(cls.label, legX + (10 + legendBoxWidth + 6) * scale, legY + (32 + i * legendRowSpacing + legendBoxHeight - 0.5) * scale);
+          ctx.fillText(cls.label, itemX + (legendBoxWidth + 6) * scale, itemY + (legendBoxHeight - 0.5) * scale);
         });
       }
     }
 
-    if (showShapefile) {
-      let currentY = 80 + (classCount - 3) * legendRowSpacing;
+    if (showShapefile && showShapefileInLegend) {
+      let currentY = 32 + numClassRows * legendRowSpacing;
       if (visibleLayers.length > 0) {
         visibleLayers.forEach((layer) => {
-          const label = getBoundaryLegendLabel(layer.geoJson) || layer.name;
-          
-          // Draw fill
-          ctx.save();
-          ctx.fillStyle = layer.fillColor;
-          ctx.globalAlpha = (layer.fillOpacity || 15) / 100;
-          ctx.fillRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
-          ctx.restore();
+          if (layer.showInLegend === false) return;
+          if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
+            Object.keys(layer.colorMapping).forEach((attrValue) => {
+              const color = layer.colorMapping[attrValue];
+              
+              // Draw fill with custom attribute color
+              ctx.save();
+              ctx.fillStyle = color;
+              ctx.globalAlpha = (layer.fillOpacity || 15) / 100;
+              ctx.fillRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+              ctx.restore();
 
-          // Draw stroke
-          ctx.save();
-          ctx.strokeStyle = layer.strokeColor;
-          ctx.lineWidth = Math.max(1, (layer.strokeWidth || 2.0) * 0.5) * scale;
-          ctx.strokeRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
-          ctx.restore();
+              // Draw stroke with layer's stroke color
+              if (layer.showStroke !== false) {
+                ctx.save();
+                ctx.strokeStyle = layer.strokeColor;
+                ctx.lineWidth = Math.max(1, (layer.strokeWidth || 2.0) * 0.5) * scale;
+                ctx.strokeRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+                ctx.restore();
+              }
 
-          // Draw label text
-          ctx.fillStyle = legendTextColor;
-          ctx.font = `${legendFontSize * scale}px ${mapFontFamily}`;
-          ctx.fillText(label, legX + (10 + legendBoxWidth + 6) * scale, legY + (currentY + legendBoxHeight - 0.5) * scale);
+              // Draw label text with customizable size/color
+              ctx.fillStyle = shapefileLegendTextColor;
+              ctx.font = `${shapefileLegendFontSize * scale}px ${mapFontFamily}`;
+              ctx.fillText(attrValue, legX + (10 + legendBoxWidth + 6) * scale, legY + (currentY + legendBoxHeight - 0.5) * scale);
 
-          currentY += legendRowSpacing;
+              currentY += 15; // standard spacing for sub-legend attribute items
+            });
+          } else {
+            const label = getBoundaryLegendLabel(layer.geoJson) || layer.name;
+            
+            // Draw fill
+            ctx.save();
+            ctx.fillStyle = layer.fillColor;
+            ctx.globalAlpha = (layer.fillOpacity || 15) / 100;
+            ctx.fillRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+            ctx.restore();
+
+            // Draw stroke
+            if (layer.showStroke !== false) {
+              ctx.save();
+              ctx.strokeStyle = layer.strokeColor;
+              ctx.lineWidth = Math.max(1, (layer.strokeWidth || 2.0) * 0.5) * scale;
+              ctx.strokeRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+              ctx.restore();
+            }
+
+            // Draw label text with customizable size/color
+            ctx.fillStyle = shapefileLegendTextColor;
+            ctx.font = `${shapefileLegendFontSize * scale}px ${mapFontFamily}`;
+            ctx.fillText(label, legX + (10 + legendBoxWidth + 6) * scale, legY + (currentY + legendBoxHeight - 0.5) * scale);
+
+            currentY += legendRowSpacing;
+          }
         });
       } else if (uploadedGeoJson) {
         const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
@@ -3303,15 +3503,17 @@ export default function GisMapView({
         ctx.restore();
 
         // Draw stroke
-        ctx.save();
-        ctx.strokeStyle = shapeStrokeColor;
-        ctx.lineWidth = Math.max(1, (shapeStrokeWidth || 2.0) * 0.5) * scale;
-        ctx.strokeRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
-        ctx.restore();
+        if (showGlobalShapefileOutline !== false) {
+          ctx.save();
+          ctx.strokeStyle = shapeStrokeColor;
+          ctx.lineWidth = Math.max(1, (shapeStrokeWidth || 2.0) * 0.5) * scale;
+          ctx.strokeRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+          ctx.restore();
+        }
 
-        // Draw label text
-        ctx.fillStyle = legendTextColor;
-        ctx.font = `${legendFontSize * scale}px ${mapFontFamily}`;
+        // Draw label text with customizable size/color
+        ctx.fillStyle = shapefileLegendTextColor;
+        ctx.font = `${shapefileLegendFontSize * scale}px ${mapFontFamily}`;
         ctx.fillText(label, legX + (10 + legendBoxWidth + 6) * scale, legY + (currentY + legendBoxHeight - 0.5) * scale);
       }
     }
@@ -3930,6 +4132,8 @@ export default function GisMapView({
     uploadedGeoJson,
     effectiveClipGeoJson,
     showShapefile,
+    showShapefileInLegend,
+    layers,
     shapeStrokeColor,
     shapeStrokeWidth,
     shapeFillColor,
@@ -4006,32 +4210,33 @@ export default function GisMapView({
         layers.forEach(layer => {
           if (!layer.visible) return;
           
-          const formatPolygonRing = (ring: number[][]) => {
+          const formatPolygonRing = (ring: number[][], customFill: string) => {
             if (ring.length === 0) return "";
             let d = `M ${getX(ring[0][0])} ${getY(ring[0][1])}`;
             for (let i = 1; i < ring.length; i++) {
               d += ` L ${getX(ring[i][0])} ${getY(ring[i][1])}`;
             }
             d += " Z";
-            return `<path d="${d}" fill="${layer.fillColor}" fill-opacity="${layer.fillOpacity / 100}" stroke="${layer.strokeColor}" stroke-width="${layer.strokeWidth}" />\n`;
+            return `<path d="${d}" fill="${customFill}" fill-opacity="${layer.fillOpacity / 100}" stroke="${layer.strokeColor}" stroke-width="${layer.strokeWidth}" />\n`;
           };
 
-          const formatFeatureGeometry = (geom: any): string => {
+          const formatFeatureGeometry = (geom: any, f: any): string => {
             if (!geom) return "";
+            const customFill = getFeatureFillColor(layer, f);
             let paths = "";
             if (geom.type === "Polygon") {
               geom.coordinates.forEach((ring: number[][]) => {
-                paths += formatPolygonRing(ring);
+                paths += formatPolygonRing(ring, customFill);
               });
             } else if (geom.type === "MultiPolygon") {
               geom.coordinates.forEach((poly: number[][][]) => {
                 poly.forEach((ring: number[][]) => {
-                  paths += formatPolygonRing(ring);
+                  paths += formatPolygonRing(ring, customFill);
                 });
               });
             } else if (geom.type === "GeometryCollection") {
               geom.geometries?.forEach((g: any) => {
-                paths += formatFeatureGeometry(g);
+                paths += formatFeatureGeometry(g, f);
               });
             }
             return paths;
@@ -4042,12 +4247,12 @@ export default function GisMapView({
             svgShapefileBoundaries += `  <!-- Layer: ${layer.name} -->\n  <g id="layer-${layer.id}">\n`;
             if (gj.type === "FeatureCollection") {
               gj.features?.forEach((f: any) => {
-                svgShapefileBoundaries += formatFeatureGeometry(f.geometry);
+                svgShapefileBoundaries += formatFeatureGeometry(f.geometry, f);
               });
             } else if (gj.type === "Feature") {
-              svgShapefileBoundaries += formatFeatureGeometry(gj.geometry);
+              svgShapefileBoundaries += formatFeatureGeometry(gj.geometry, gj);
             } else {
-              svgShapefileBoundaries += formatFeatureGeometry(gj);
+              svgShapefileBoundaries += formatFeatureGeometry(gj, null);
             }
             svgShapefileBoundaries += "  </g>\n";
           }
@@ -4261,18 +4466,31 @@ export default function GisMapView({
       text: legendTextColor
     };
 
-    // Legend panel vector representation
-    let legX = w - margin - 170;
-    let legY = h - margin - 110;
-    if (legendPos === "top-left") { legX = margin + 15; legY = margin + 15; }
-    else if (legendPos === "top-right") { legX = w - margin - 170; legY = margin + 15; }
-    else if (legendPos === "bottom-left") { legX = margin + 15; legY = h - margin - 110; }
-
-    legX += legendOffsetX;
-    legY += legendOffsetY;
-
-    const boundaryLabel = getBoundaryLegendLabel(uploadedGeoJson);
-    const hasBoundaryLegend = showShapefile && !!uploadedGeoJson && !!boundaryLabel;
+    let legendWidthVal = legendWidth;
+    const visibleLayers = layers.filter(l => l.visible);
+    let extraBoundaryHeight = 0;
+    if (showShapefile && showShapefileInLegend) {
+      if (visibleLayers.length > 0) {
+        const hasColorMappings = visibleLayers.some(l => l.colorAttribute && l.colorMapping && Object.keys(l.colorMapping).length > 0);
+        if (hasColorMappings && legendWidthVal < 195) {
+          legendWidthVal = 195;
+        }
+        visibleLayers.forEach(layer => {
+          if (layer.showInLegend === false) return;
+          if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
+            extraBoundaryHeight += Object.keys(layer.colorMapping).length * 15;
+          } else {
+            extraBoundaryHeight += 15;
+          }
+        });
+      } else if (uploadedGeoJson) {
+        const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
+        if (label) {
+          extraBoundaryHeight = 15;
+        }
+      }
+    }
+    const legendWidthFinal = legendWidthVal;
 
     const isStations = selectedParam === "STATIONS";
 
@@ -4284,7 +4502,21 @@ export default function GisMapView({
         classCount = interpolationClasses;
       }
     }
-    const legendHeight = 95 + (classCount - 3) * legendRowSpacing + (hasBoundaryLegend ? 15 : 0);
+    const numClassRows = isStations || (showPoints && showOnlyExceedingPoints && !isDiff)
+      ? 2
+      : Math.ceil(classCount / legendColumns);
+
+    const legendHeight = Math.max(95, 95 + (numClassRows - 3) * legendRowSpacing + extraBoundaryHeight + (isStations ? 10 : 0));
+
+    // Legend panel vector representation
+    let legX = w - margin - (legendWidthFinal + 15);
+    let legY = h - margin - (legendHeight + 15);
+    if (legendPos === "top-left") { legX = margin + 15; legY = margin + 15; }
+    else if (legendPos === "top-right") { legX = w - margin - (legendWidthFinal + 15); legY = margin + 15; }
+    else if (legendPos === "bottom-left") { legX = margin + 15; legY = h - margin - (legendHeight + 15); }
+
+    legX += legendOffsetX;
+    legY += legendOffsetY;
 
     const displayParamName = getParamDisplayName(selectedParam);
     let legendSub = "";
@@ -4308,34 +4540,69 @@ export default function GisMapView({
         <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + 51}" font-size="${legendFontSize}" font-weight="bold" fill="${legendTextColor}">Permissible Limit</text>
         <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + 63}" font-size="${legendFontSize}" fill="#64748b">(Value > ${paramConfig.b2} ${paramConfig.unit})</text>
       `;
-    } else if (isDiff) {
-      const diffClasses = [
-        { label: "Improved (Post < Pre)", color: colorDiffImproved },
-        { label: "No Change (Stable)", color: colorDiffStable },
-        { label: "Deteriorated (Post > Pre)", color: colorDiffDeteriorated }
-      ];
-      diffClasses.forEach((cls, i) => {
-        legendItems += `
-          <rect x="${legX + 10}" y="${legY + 32 + i * legendRowSpacing}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${cls.color}" />
-          <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + 32 + i * legendRowSpacing + legendBoxHeight - 0.5}" font-size="${legendFontSize}" fill="${legendTextColor}">${cls.label}</text>
-        `;
-      });
     } else {
-      const { colors: classColors, labels: classLabels } = getClassColorsAndBreaks(paramConfig);
-      classLabels.forEach((lbl, i) => {
-        legendItems += `
-          <rect x="${legX + 10}" y="${legY + 32 + i * legendRowSpacing}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${classColors[i]}" />
-          <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + 32 + i * legendRowSpacing + legendBoxHeight - 0.5}" font-size="${legendFontSize}" fill="${legendTextColor}">${lbl}</text>
-        `;
-      });
+      const colWidth = (legendWidthFinal - 16) / legendColumns;
+      if (isDiff) {
+        const diffClasses = [
+          { label: "Improved (Post < Pre)", color: colorDiffImproved },
+          { label: "No Change (Stable)", color: colorDiffStable },
+          { label: "Deteriorated (Post > Pre)", color: colorDiffDeteriorated }
+        ];
+        diffClasses.forEach((cls, i) => {
+          const colIndex = i % legendColumns;
+          const rowIndex = Math.floor(i / legendColumns);
+          const itemX = legX + (10 + colIndex * colWidth);
+          const itemY = legY + (32 + rowIndex * legendRowSpacing);
+          legendItems += `
+            <rect x="${itemX}" y="${itemY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${cls.color}" />
+            <text x="${itemX + legendBoxWidth + 6}" y="${itemY + legendBoxHeight - 0.5}" font-size="${legendFontSize}" fill="${legendTextColor}">${cls.label}</text>
+          `;
+        });
+      } else {
+        const { colors: classColors, labels: classLabels } = getClassColorsAndBreaks(paramConfig);
+        classLabels.forEach((lbl, i) => {
+          const colIndex = i % legendColumns;
+          const rowIndex = Math.floor(i / legendColumns);
+          const itemX = legX + (10 + colIndex * colWidth);
+          const itemY = legY + (32 + rowIndex * legendRowSpacing);
+          legendItems += `
+            <rect x="${itemX}" y="${itemY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${classColors[i]}" />
+            <text x="${itemX + legendBoxWidth + 6}" y="${itemY + legendBoxHeight - 0.5}" font-size="${legendFontSize}" fill="${legendTextColor}">${lbl}</text>
+          `;
+        });
+      }
     }
 
-    if (hasBoundaryLegend && boundaryLabel) {
-      const boundaryY = 80 + (classCount - 3) * legendRowSpacing;
-      legendItems += `
-        <rect x="${legX + 10}" y="${legY + boundaryY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${shapeFillColor}" fill-opacity="${(shapeFillOpacity || 15) / 100}" stroke="${shapeStrokeColor}" stroke-width="${Math.max(1, (shapeStrokeWidth || 2.0) * 0.5)}" />
-        <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + boundaryY + legendBoxHeight - 0.5}" font-size="${legendFontSize}" fill="${legendTextColor}">${boundaryLabel}</text>
-      `;
+    if (showShapefile && showShapefileInLegend) {
+      let currentY = 32 + numClassRows * legendRowSpacing;
+      if (visibleLayers.length > 0) {
+        visibleLayers.forEach((layer) => {
+          if (layer.showInLegend === false) return;
+          if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
+            Object.keys(layer.colorMapping).forEach((attrValue) => {
+              const color = layer.colorMapping[attrValue];
+              legendItems += `
+                <rect x="${legX + 10}" y="${legY + currentY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${color}" fill-opacity="${(layer.fillOpacity || 15) / 100}" stroke="${layer.showStroke !== false ? layer.strokeColor : 'none'}" stroke-width="${layer.showStroke !== false ? Math.max(1, (layer.strokeWidth || 2.0) * 0.5) : 0}" />
+                <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + currentY + legendBoxHeight - 0.5}" font-size="${shapefileLegendFontSize}" fill="${shapefileLegendTextColor}">${attrValue}</text>
+              `;
+              currentY += 15;
+            });
+          } else {
+            const label = getBoundaryLegendLabel(layer.geoJson) || layer.name;
+            legendItems += `
+              <rect x="${legX + 10}" y="${legY + currentY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${layer.fillColor}" fill-opacity="${(layer.fillOpacity || 15) / 100}" stroke="${layer.showStroke !== false ? layer.strokeColor : 'none'}" stroke-width="${layer.showStroke !== false ? Math.max(1, (layer.strokeWidth || 2.0) * 0.5) : 0}" />
+              <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + currentY + legendBoxHeight - 0.5}" font-size="${shapefileLegendFontSize}" fill="${shapefileLegendTextColor}">${label}</text>
+            `;
+            currentY += legendRowSpacing;
+          }
+        });
+      } else if (uploadedGeoJson) {
+        const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
+        legendItems += `
+          <rect x="${legX + 10}" y="${legY + currentY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${shapeFillColor}" fill-opacity="${(shapeFillOpacity || 15) / 100}" stroke="${showGlobalShapefileOutline ? shapeStrokeColor : 'none'}" stroke-width="${showGlobalShapefileOutline ? Math.max(1, (shapeStrokeWidth || 2.0) * 0.5) : 0}" />
+          <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + currentY + legendBoxHeight - 0.5}" font-size="${shapefileLegendFontSize}" fill="${shapefileLegendTextColor}">${label}</text>
+        `;
+      }
     }
 
     let scaleBarElement = "";
@@ -4525,7 +4792,7 @@ ${pointElements}  </g>
 
   <!-- 6. Compact Positionable Legend -->
   <g id="map-legend">
-    <rect x="${legX}" y="${legY}" width="${legendWidth}" height="${legendHeight}" fill="${pStyle.bg}" stroke="${pStyle.border}" stroke-width="1" rx="4" />
+    <rect x="${legX}" y="${legY}" width="${legendWidthFinal}" height="${legendHeight}" fill="${pStyle.bg}" stroke="${pStyle.border}" stroke-width="1" rx="4" />
     <text x="${legX + 8}" y="${legY + 16}" font-size="${legendTitleSize}" font-weight="bold" fill="${legendTextColor}" ${legend3dEffect !== "none" ? `filter="url(#3d-${legend3dEffect})"` : ""}>Legend</text>
 ${legendItems}    <text x="${legX + 10}" y="${legY + (legendHeight - 9)}" font-size="${legendSubtitleSize}" font-style="italic" fill="#64748b">Unit: ${paramConfig.unit || "N/A"}</text>
   </g>
@@ -5241,6 +5508,13 @@ ${svgStatsPanel}
                                     return l.includes("name") || l.includes("state") || l.includes("dist") || l.includes("st_nm") || l.includes("dt_nm");
                                   }) || propertyKeys[0] || "";
 
+                                  const autoColorAttr = propertyKeys.find(k => {
+                                    const l = k.toLowerCase();
+                                    return l.includes("aquifer") || l.includes("aq_") || l.includes("aqtype") || l.includes("rock") || l.includes("litho");
+                                  }) || "";
+
+                                  const initialMapping = autoColorAttr ? getInitialColorMapping(geojson, autoColorAttr) : {};
+
                                   // Nice color combo
                                   const colors = [
                                     { stroke: "#2563eb", fill: "#60a5fa" }, // Blue
@@ -5261,11 +5535,15 @@ ${svgStatsPanel}
                                     strokeColor: colorCombo.stroke,
                                     strokeWidth: 2.0,
                                     fillColor: colorCombo.fill,
-                                    fillOpacity: 15,
+                                    fillOpacity: 45, // default opacity slightly higher for filled aquifers
                                     showLabels: true,
                                     labelKey: defaultLabelKey,
                                     labelColor: "#1e293b",
-                                    labelSize: 11
+                                    labelSize: 11,
+                                    colorAttribute: autoColorAttr,
+                                    colorMapping: initialMapping,
+                                    showStroke: true,
+                                    showInLegend: true
                                   };
                                   setLayers(prev => [...prev, newLayer]);
                                   setUploadedGeoJson(geojson);
@@ -5297,6 +5575,13 @@ ${svgStatsPanel}
                                     return l.includes("name") || l.includes("state") || l.includes("dist") || l.includes("st_nm") || l.includes("dt_nm");
                                   }) || propertyKeys[0] || "";
 
+                                  const autoColorAttr = propertyKeys.find(k => {
+                                    const l = k.toLowerCase();
+                                    return l.includes("aquifer") || l.includes("aq_") || l.includes("aqtype") || l.includes("rock") || l.includes("litho");
+                                  }) || "";
+
+                                  const initialMapping = autoColorAttr ? getInitialColorMapping(parsed, autoColorAttr) : {};
+
                                   const colors = [
                                     { stroke: "#2563eb", fill: "#60a5fa" },
                                     { stroke: "#16a34a", fill: "#4ade80" },
@@ -5316,11 +5601,15 @@ ${svgStatsPanel}
                                     strokeColor: colorCombo.stroke,
                                     strokeWidth: 2.0,
                                     fillColor: colorCombo.fill,
-                                    fillOpacity: 15,
+                                    fillOpacity: 45,
                                     showLabels: true,
                                     labelKey: defaultLabelKey,
                                     labelColor: "#1e293b",
-                                    labelSize: 11
+                                    labelSize: 11,
+                                    colorAttribute: autoColorAttr,
+                                    colorMapping: initialMapping,
+                                    showStroke: true,
+                                    showInLegend: true
                                   };
                                   setLayers(prev => [...prev, newLayer]);
                                   setUploadedGeoJson(parsed);
@@ -5367,6 +5656,15 @@ ${svgStatsPanel}
                 {/* Loaded Layers List */}
                 {layers.length > 0 && (
                   <div className="border-t border-slate-100 pt-3 flex flex-col gap-3">
+                    <label className="flex items-center justify-between cursor-pointer p-2 bg-indigo-50/40 border border-indigo-100/50 rounded-xl mb-1">
+                      <span className="text-[11px] font-bold text-slate-700">Show Shapefiles in Legend Block</span>
+                      <input
+                        type="checkbox"
+                        checked={showShapefileInLegend}
+                        onChange={(e) => setShowShapefileInLegend(e.target.checked)}
+                        className="cursor-pointer"
+                      />
+                    </label>
                     <span className="text-xs font-bold text-slate-800">Active Map Layers ({layers.length})</span>
                     <div className="flex flex-col gap-2">
                       {layers.map((layer) => {
@@ -5459,6 +5757,32 @@ ${svgStatsPanel}
                             {/* Styling details */}
                             {layer.visible && (
                               <div className="mt-2 pt-2 border-t border-slate-200/60 flex flex-col gap-2.5">
+                                <div className="flex items-center justify-between gap-2 p-1 bg-white border border-slate-100 rounded-xl">
+                                  <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={layer.showInLegend !== false}
+                                      onChange={(e) => {
+                                        setLayers(prev => prev.map(l => l.id === layer.id ? { ...l, showInLegend: e.target.checked } : l));
+                                      }}
+                                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                                    />
+                                    <span className="text-[9px] font-bold text-slate-600 uppercase">Show in Legend</span>
+                                  </label>
+                                  
+                                  <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={layer.showStroke !== false}
+                                      onChange={(e) => {
+                                        setLayers(prev => prev.map(l => l.id === layer.id ? { ...l, showStroke: e.target.checked } : l));
+                                      }}
+                                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                                    />
+                                    <span className="text-[9px] font-bold text-slate-600 uppercase">Outline</span>
+                                  </label>
+                                </div>
+
                                 <div className="grid grid-cols-2 gap-2">
                                   <div>
                                     <label className="block text-[9px] text-slate-500 font-bold mb-1">OUTLINE COLOR</label>
@@ -5514,6 +5838,77 @@ ${svgStatsPanel}
                                       className="w-full cursor-pointer accent-indigo-600 mt-1"
                                     />
                                   </div>
+                                </div>
+
+                                {/* Color By Attribute section */}
+                                <div className="pt-2 border-t border-dashed border-slate-200 flex flex-col gap-1.5">
+                                  <label className="block text-[9px] text-slate-500 font-bold">FILL BY ATTRIBUTE CATEGORY</label>
+                                  <select
+                                    value={layer.colorAttribute || ""}
+                                    onChange={(e) => {
+                                      const attr = e.target.value;
+                                      const mapping = attr ? getInitialColorMapping(layer.geoJson, attr) : {};
+                                      setLayers(prev => prev.map(l => l.id === layer.id ? { ...l, colorAttribute: attr, colorMapping: mapping } : l));
+                                    }}
+                                    className="w-full text-[10px] font-medium bg-white border border-slate-200 rounded p-1 focus:outline-none"
+                                  >
+                                    <option value="">None (Use solid FILL COLOR above)</option>
+                                    {propertyKeys.map((k) => (
+                                      <option key={k} value={k}>
+                                        {k}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  {layer.colorAttribute && layer.colorMapping && (
+                                    <div className="bg-white border border-slate-200/80 rounded-xl p-2.5 max-h-48 overflow-y-auto flex flex-col gap-1.5">
+                                      <div className="flex justify-between items-center pb-1 border-b border-slate-100">
+                                        <span className="text-[9px] font-bold text-slate-500 uppercase">Category Colors</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const mapping = getInitialColorMapping(layer.geoJson, layer.colorAttribute!);
+                                            setLayers(prev => prev.map(l => l.id === layer.id ? { ...l, colorMapping: mapping } : l));
+                                            showToast("Reset to default color mapping", "success");
+                                          }}
+                                          className="text-[9px] text-indigo-600 hover:text-indigo-800 font-bold"
+                                        >
+                                          Reset Defaults
+                                        </button>
+                                      </div>
+                                      {Object.keys(layer.colorMapping).length === 0 ? (
+                                        <span className="text-[10px] text-slate-400 italic text-center py-1">No category values found</span>
+                                      ) : (
+                                        Object.keys(layer.colorMapping).map((val) => (
+                                          <div key={val} className="flex items-center justify-between gap-2 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                                            <span className="text-[10px] font-medium text-slate-700 truncate max-w-[130px]" title={val}>
+                                              {val || "(blank)"}
+                                            </span>
+                                            <input
+                                              type="color"
+                                              value={layer.colorMapping?.[val] || "#cccccc"}
+                                              onChange={(e) => {
+                                                const newColor = e.target.value;
+                                                setLayers(prev => prev.map(l => {
+                                                  if (l.id === layer.id) {
+                                                    return {
+                                                      ...l,
+                                                      colorMapping: {
+                                                        ...l.colorMapping,
+                                                        [val]: newColor
+                                                      }
+                                                    };
+                                                  }
+                                                  return l;
+                                                }));
+                                              }}
+                                              className="w-5 h-5 cursor-pointer border border-slate-200 rounded shrink-0 p-0"
+                                            />
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Labels inside this Layer */}
@@ -5632,6 +6027,16 @@ ${svgStatsPanel}
                     </label>
 
                     <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-[11px] font-bold text-slate-700">Show Shapefiles in Legend Block</span>
+                      <input
+                        type="checkbox"
+                        checked={showShapefileInLegend}
+                        onChange={(e) => setShowShapefileInLegend(e.target.checked)}
+                        className="cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between cursor-pointer">
                       <span className="text-[11px] font-bold text-slate-700">Auto-Fit Map to Boundary</span>
                       <input
                         type="checkbox"
@@ -5643,7 +6048,18 @@ ${svgStatsPanel}
 
                     {/* Formatting details */}
                     <div className="border-t border-slate-100 pt-3 flex flex-col gap-3.5">
-                      <span className="text-xs font-bold text-slate-800">Boundary Cartographic Styling</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800">Boundary Cartographic Styling</span>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={showGlobalShapefileOutline}
+                            onChange={(e) => setShowGlobalShapefileOutline(e.target.checked)}
+                            className="cursor-pointer"
+                          />
+                          <span className="text-[11px] font-bold text-slate-700">Show Outline</span>
+                        </label>
+                      </div>
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -6072,6 +6488,19 @@ ${svgStatsPanel}
                       type="checkbox"
                       checked={enableGaussianSmoothing}
                       onChange={(e) => setEnableGaussianSmoothing(e.target.checked)}
+                      className="cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between cursor-pointer p-1.5 rounded-lg hover:bg-slate-50">
+                    <div>
+                      <span className="text-xs font-medium text-slate-700 block">Smooth Continuous Color Blending</span>
+                      <span className="text-[9px] text-slate-400">Enables high-fidelity bilinear smoothing for map colors (disable for sharp grids)</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={smoothBlending}
+                      onChange={(e) => setSmoothBlending(e.target.checked)}
                       className="cursor-pointer"
                     />
                   </label>
@@ -6609,6 +7038,16 @@ ${svgStatsPanel}
                   </select>
                 </div>
 
+                <label className="flex items-center justify-between cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 border border-slate-100/60 mt-1">
+                  <span className="text-xs font-semibold text-slate-700">Show Shapefiles in Legend Block</span>
+                  <input
+                    type="checkbox"
+                    checked={showShapefileInLegend}
+                    onChange={(e) => setShowShapefileInLegend(e.target.checked)}
+                    className="cursor-pointer h-4 w-4 rounded accent-indigo-600"
+                  />
+                </label>
+
                 <div className="border-b border-slate-100 pb-3 flex flex-col gap-2.5">
                   <span className="text-xs font-bold text-slate-800 block">Element Color Customization</span>
                   <div className="grid grid-cols-3 gap-2">
@@ -6910,29 +7349,42 @@ ${svgStatsPanel}
                   <div className="border-t border-slate-100 pt-3 flex flex-col gap-3">
                     <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wide">Legend & Classes Sizing</span>
                     
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <div>
                         <label className="block text-[10px] text-slate-500 font-bold mb-1">LEGEND WIDTH (px)</label>
                         <input
                           type="number"
                           value={legendWidth}
                           onChange={(e) => setLegendWidth(parseInt(e.target.value) || 155)}
-                          className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2 focus:outline-none"
+                          className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-xl p-1.5 focus:outline-none"
                           min="100"
                           max="400"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-[10px] text-slate-500 font-bold mb-1">ROW SPACING (px)</label>
+                        <label className="block text-[10px] text-slate-500 font-bold mb-1">ROW SPACING</label>
                         <input
                           type="number"
                           value={legendRowSpacing}
                           onChange={(e) => setLegendRowSpacing(parseInt(e.target.value) || 16)}
-                          className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2 focus:outline-none"
+                          className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-xl p-1.5 focus:outline-none"
                           min="10"
                           max="40"
                         />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-bold mb-1">COLUMNS</label>
+                        <select
+                          value={legendColumns}
+                          onChange={(e) => setLegendColumns(parseInt(e.target.value) || 1)}
+                          className="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-xl p-1.5 focus:outline-none"
+                        >
+                          <option value={1}>1 Col</option>
+                          <option value={2}>2 Col</option>
+                          <option value={3}>3 Col</option>
+                        </select>
                       </div>
                     </div>
 
@@ -7000,6 +7452,36 @@ ${svgStatsPanel}
                           min="5"
                           max="16"
                         />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-3 flex flex-col gap-3">
+                    <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wide">Shapefile Legend Customization</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-bold mb-1">FONT SIZE</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={shapefileLegendFontSize}
+                          onChange={(e) => setShapefileLegendFontSize(parseFloat(e.target.value) || 7.5)}
+                          className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2 focus:outline-none text-center"
+                          min="5"
+                          max="16"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-bold mb-1">TEXT COLOR</label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={shapefileLegendTextColor}
+                            onChange={(e) => setShapefileLegendTextColor(e.target.value)}
+                            className="w-8 h-8 cursor-pointer border border-slate-200 rounded p-0.5"
+                          />
+                          <span className="text-[10px] text-slate-600 font-mono font-bold">{shapefileLegendTextColor}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -7072,18 +7554,18 @@ ${svgStatsPanel}
                 </span>
               </div>
 
-              {/* Dynamic Zoom controls - 10% change per click */}
+              {/* Dynamic Zoom controls - 5% change per click */}
               <div className="flex items-center gap-1 bg-slate-100/85 border border-slate-200/60 rounded-2xl p-1 shadow-inner">
                 <button
-                  onClick={() => setZoomScaleFactor(z => Math.max(0.2, z * 0.9))}
-                  title="Zoom In 10%"
+                  onClick={() => setZoomScaleFactor(z => Math.max(0.005, z * 0.95))}
+                  title="Zoom In 5%"
                   className="cursor-pointer bg-white hover:bg-slate-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-xs border border-slate-200 flex items-center gap-1 shadow-sm transition-all duration-100"
                 >
                   <ZoomIn className="w-3.5 h-3.5 text-indigo-600" /> Zoom In
                 </button>
                 <button
-                  onClick={() => setZoomScaleFactor(z => Math.min(5.0, z * 1.1))}
-                  title="Zoom Out 10%"
+                  onClick={() => setZoomScaleFactor(z => Math.min(20.0, z * 1.05))}
+                  title="Zoom Out 5%"
                   className="cursor-pointer bg-white hover:bg-slate-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-xs border border-slate-200 flex items-center gap-1 shadow-sm transition-all duration-100"
                 >
                   <ZoomOut className="w-3.5 h-3.5 text-indigo-600" /> Zoom Out
@@ -7178,13 +7660,14 @@ ${svgStatsPanel}
               <div className={`relative ${canvasAspectClass} w-full rounded-3xl overflow-hidden border-2 border-slate-200 shadow-md bg-white`}>
                 <canvas
                   ref={canvasRefLeft}
-                  width={canvasWidth}
-                  height={canvasHeight}
+                  width={canvasWidth * (typeof window !== "undefined" ? (window.devicePixelRatio || 2) * 2.0 : 4.0)}
+                  height={canvasHeight * (typeof window !== "undefined" ? (window.devicePixelRatio || 2) * 2.0 : 4.0)}
                   className="w-full h-full block cursor-move"
                   onMouseDown={handleCanvasMouseDown}
                   onMouseMove={handleCanvasMouseMove}
                   onMouseUp={handleCanvasMouseUpOrLeave}
                   onMouseLeave={handleCanvasMouseUpOrLeave}
+                  onDoubleClick={handleCanvasDoubleClick}
                 />
                 {isLeftLoading && (
                   <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px] flex items-center justify-center transition-all">
@@ -7210,13 +7693,14 @@ ${svgStatsPanel}
                 <div className={`relative ${canvasAspectClass} w-full rounded-3xl overflow-hidden border-2 border-slate-200 shadow-md bg-white`}>
                   <canvas
                     ref={canvasRefRight}
-                    width={canvasWidth}
-                    height={canvasHeight}
+                    width={canvasWidth * (typeof window !== "undefined" ? (window.devicePixelRatio || 2) * 2.0 : 4.0)}
+                    height={canvasHeight * (typeof window !== "undefined" ? (window.devicePixelRatio || 2) * 2.0 : 4.0)}
                     className="w-full h-full block cursor-move"
                     onMouseDown={handleCanvasMouseDown}
                     onMouseMove={handleCanvasMouseMove}
                     onMouseUp={handleCanvasMouseUpOrLeave}
                     onMouseLeave={handleCanvasMouseUpOrLeave}
+                    onDoubleClick={handleCanvasDoubleClick}
                   />
                   {isRightLoading && (
                     <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px] flex items-center justify-center transition-all">

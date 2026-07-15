@@ -3339,6 +3339,40 @@ export default function BulletinView({
     await new Promise((resolve) => setTimeout(resolve, 150)); // let UI spin lock
 
     try {
+      const formatChemicalFormula = (formula: string): string => {
+        const mapping: Record<string, string> = {
+          "NO3": "NO<sub>3</sub><sup>-</sup>",
+          "F": "F<sup>-</sup>",
+          "Cl": "Cl<sup>-</sup>",
+          "Ca": "Ca<sup>2+</sup>",
+          "Mg": "Mg<sup>2+</sup>",
+          "Na": "Na<sup>+</sup>",
+          "K": "K<sup>+</sup>",
+          "HCO3": "HCO<sub>3</sub><sup>-</sup>",
+          "CO3": "CO<sub>3</sub><sup>2-</sup>",
+          "SO4": "SO<sub>4</sub><sup>2-</sup>",
+          "Fe": "Fe<sup>2+</sup>",
+          "As": "As",
+          "U": "U",
+          "Zn": "Zn<sup>2+</sup>",
+          "Cu": "Cu<sup>2+</sup>",
+          "Pb": "Pb<sup>2+</sup>",
+          "Cd": "Cd<sup>2+</sup>",
+          "Cr": "Cr",
+          "Hg": "Hg",
+          "Ni": "Ni",
+          "Se": "Se",
+          "Mn": "Mn",
+          "Al": "Al",
+          "Ba": "Ba",
+          "B": "B",
+          "Mo": "Mo",
+          "NH4": "NH<sub>4</sub><sup>+</sup>",
+          "PO4": "PO<sub>4</sub><sup>3-</sup>"
+        };
+        return mapping[formula] || formula;
+      };
+
       const latestCompiledMaps: Record<string, string> = {};
       const isHindi = false;
       let filteredData = rawData;
@@ -3392,16 +3426,16 @@ export default function BulletinView({
 
         const stats = getBulletinStats(configKey, mainReportData);
         const chartDataPoint = { name: configKey, y: parseFloat(stats.pct) };
-        const listItem = `<li style="margin-bottom: 8px;"><strong>${PARAM_CONFIG[configKey]?.name || paramName} (${configKey})</strong> was found above the permissible limit in <strong>${stats.pct}%</strong> of samples.</li>`;
+        const listItem = `<li style="margin-bottom: 8px;"><strong>${PARAM_CONFIG[configKey]?.name || paramName} (${formatChemicalFormula(configKey)})</strong> was found above the permissible limit in <strong>${stats.pct}%</strong> of samples.</li>`;
 
         if (heavyMetalsList.includes(configKey)) {
           heavyChartDataSeries.push(chartDataPoint);
           heavySummaryListHTML += listItem;
-          selectedHeavyNames.push(`${PARAM_CONFIG[configKey]?.name} (${configKey})`);
+          selectedHeavyNames.push(`${PARAM_CONFIG[configKey]?.name} (${formatChemicalFormula(configKey)})`);
         } else if (basicParamsList.includes(configKey)) {
           basicChartDataSeries.push(chartDataPoint);
           basicSummaryListHTML += listItem;
-          selectedBasicNames.push(`${PARAM_CONFIG[configKey]?.name} (${configKey})`);
+          selectedBasicNames.push(`${PARAM_CONFIG[configKey]?.name} (${formatChemicalFormula(configKey)})`);
         }
       });
 
@@ -4445,7 +4479,7 @@ Although natural geological sources account for the majority of arsenic contamin
         }
 
         const tableInfo = generateBulletinTableHTML(configKey, filteredData, breakdownLevel, tableANum);
-        const classificationCaption = `<p style="text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 5px; color: #1e3a8a;">Table No. ${tableANum}: Distribution of ${config.name} (${configKey}) exceedances</p>`;
+        const classificationCaption = `<p style="text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 5px; color: #1e3a8a;">Table No. ${tableANum}: Distribution of ${config.name} (${formatChemicalFormula(configKey)}) exceedances</p>`;
         
         const detailedTableHTML = generateBulletinDetailedTableHTML(configKey, filteredData, breakdownLevel, tableBNum);
         const categorizationParagraph = getCategorizationText(tableInfo.dataMap, config.name, breakdownLevel);
@@ -4512,7 +4546,7 @@ Although natural geological sources account for the majority of arsenic contamin
 
         parameterSectionsHTML += `
           <div style="margin-bottom: 40px; page-break-inside: auto;">
-            <h4 style="font-size: 13pt; font-weight: bold; margin-top: 25px; color: #1e3a8a; border-bottom: 1.5px solid #94a3b8; padding-bottom: 4px;">4.${subSecIndex++} ${config.name} (${configKey})</h4>
+            <h4 style="font-size: 13pt; font-weight: bold; margin-top: 25px; color: #1e3a8a; border-bottom: 1.5px solid #94a3b8; padding-bottom: 4px;">4.${subSecIndex++} ${config.name} (${formatChemicalFormula(configKey)})</h4>
             <div style="text-align: justify; line-height: 1.6; margin-bottom: 15px;">
               ${description}
             </div>
@@ -4540,11 +4574,11 @@ Although natural geological sources account for the majority of arsenic contamin
               mapImageBase64
                 ? `
               <p style="text-align: justify; line-height: 1.6; margin-top: 15px; margin-bottom: 15px;">
-                Spatial GIS Map showing ${config.name} (${configKey}) distribution is given in figure ${figIndex}.
+                Spatial GIS Map showing ${config.name} (${formatChemicalFormula(configKey)}) distribution is given in figure ${figIndex}.
               </p>
               <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
                 <img src="${mapImageBase64}" width="650" style="max-width: 100%; height: auto; border: 1px solid #e2e8f0; border-radius: 8px; display: block; margin: 0 auto; background: transparent;" alt="GIS Spatial Map of ${config.name}" />
-                <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: Spatial GIS Map showing ${config.name} (${configKey}) distribution</p>
+                <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: Spatial GIS Map showing ${config.name} (${formatChemicalFormula(configKey)}) distribution</p>
               </div>
               `
                 : ""
@@ -6011,9 +6045,64 @@ Although natural geological sources account for the majority of arsenic contamin
         return roman[num - 1] || num.toString();
       };
 
+      const formatParameterValueForAnnexure = (val: number, key: string): string => {
+        if (val === undefined || val === null || isNaN(val)) return "N/A";
+        const norm = key.toUpperCase().trim();
+        // Group 1: 0 decimal places
+        if (
+          norm === "EC" ||
+          norm === "TH" ||
+          norm === "CL" ||
+          norm === "NA" ||
+          norm === "SO4" ||
+          norm === "NO3" ||
+          norm === "NITRATE" ||
+          norm === "TDS" ||
+          norm === "ALKALINITY"
+        ) {
+          return val.toFixed(0);
+        }
+        // Group 2: 2 decimal places
+        if (
+          norm === "PH" ||
+          norm === "F" ||
+          norm === "FLUORIDE" ||
+          norm === "K" ||
+          norm === "CA" ||
+          norm === "MG" ||
+          norm === "U" ||
+          norm === "URANIUM" ||
+          norm === "AS" ||
+          norm === "ARSENIC" ||
+          norm === "SAR" ||
+          norm === "RSC"
+        ) {
+          return val.toFixed(2);
+        }
+        // Group 3: Other Heavy metals - 3 decimal places
+        return val.toFixed(3);
+      };
+
+      const formatCoord = (valStr: string): string => {
+        const num = parseFloat(valStr);
+        if (isNaN(num)) return valStr || "N/A";
+        return String(parseFloat(num.toFixed(5)));
+      };
+
       // Annexures Calculation for selected parameters exceeding permissible limits
       let annexuresHTML = "";
       if (filteredData && filteredData.length > 0) {
+        // Extract unique seasons and years from dataset to ensure they are written in the report
+        const datasetSeasons = headers?.season && filteredData
+          ? [...new Set(filteredData.map(d => String(d[headers.season] || "").trim()).filter(Boolean))]
+          : [];
+        const datasetYears = headers?.year && filteredData
+          ? [...new Set(filteredData.map(d => String(d[headers.year] || "").trim()).filter(Boolean))]
+          : [];
+        
+        const displaySeasonText = datasetSeasons.length > 0 ? datasetSeasons.join(", ") : "Seasonal";
+        const displayYearText = datasetYears.length > 0 ? datasetYears.join(", ") : bulletinSeason;
+
         const sampleRow = filteredData[0];
         const stateHeader = (headers && headers.state) || findHeaderByKeys(sampleRow, ["state", "st_nm", "state_name"]) || "State";
         const districtHeader = (headers && headers.district) || findHeaderByKeys(sampleRow, ["district", "dist", "district_name"]) || "District";
@@ -6021,7 +6110,7 @@ Although natural geological sources account for the majority of arsenic contamin
         const locationHeader = (headers && headers.location) || findHeaderByKeys(sampleRow, ["location", "loc_name", "well_name", "village", "site", "station"]) || "Location";
         const latHeader = (headers && headers.latitude) || findHeaderByKeys(sampleRow, ["latitude", "lat", "latitude_dd", "y", "northing"]) || "Latitude";
         const lngHeader = (headers && headers.longitude) || findHeaderByKeys(sampleRow, ["longitude", "lng", "lon", "longitude_dd", "x", "easting"]) || "Longitude";
-        const sourceHeader = findHeaderByKeys(sampleRow, ["source", "type", "source type", "source_type", "well type", "well_type", "source_type_code", "source_code"]) || "";
+        const sourceHeader = (headers && headers.source) || findHeaderByKeys(sampleRow, ["source", "type", "source type", "source_type", "well type", "well_type", "source_type_code", "source_code"]) || "";
 
         let annexureIndex = 1;
 
@@ -6074,28 +6163,28 @@ Although natural geological sources account for the majority of arsenic contamin
           let tableRowsHTML = "";
           slicedRows.forEach((item, rIdx) => {
             const d = item.row;
-            const sVal = String(d[stateHeader] || "").trim() || "N/A";
-            const dVal = String(d[districtHeader] || "").trim() || "N/A";
-            const bVal = String(d[blockHeader] || "").trim() || "N/A";
-            const lVal = String(d[locationHeader] || "").trim() || "N/A";
-            const latVal = String(d[latHeader] || "").trim() || "N/A";
-            const lngVal = String(d[lngHeader] || "").trim() || "N/A";
-            const srcVal = sourceHeader ? (String(d[sourceHeader] || "").trim() || "N/A") : "N/A";
-            const pVal = item.value.toFixed(configKey === "pH" ? 2 : (configKey === "As" || configKey === "U" ? 3 : 2));
+            const sVal = toProperCase(String(d[stateHeader] || ""));
+            const dVal = toProperCase(String(d[districtHeader] || ""));
+            const bVal = toProperCase(String(d[blockHeader] || ""));
+            const lVal = toProperCase(String(d[locationHeader] || ""));
+            const latVal = formatCoord(String(d[latHeader] || "").trim());
+            const lngVal = formatCoord(String(d[lngHeader] || "").trim());
+            const srcVal = sourceHeader ? (String(d[sourceHeader] || "")) : "N/A";
+            const pVal = formatParameterValueForAnnexure(item.value, configKey);
 
             const rowBg = rIdx % 2 === 1 ? 'background-color: #f8fafc;' : '';
 
             tableRowsHTML += `
-              <tr style="height: 0.3in; font-family: 'Times New Roman', Times, serif; font-size: 10pt;">
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${rIdx + 1}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${sVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${dVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${bVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${lVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${latVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${lngVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${srcVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: right; font-weight: bold; color: #dc2626;">${pVal}</td>
+              <tr style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; ${rowBg}">
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${rIdx + 1}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: left;">${sVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: left;">${dVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: left;">${bVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: left;">${lVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${latVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${lngVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${srcVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: right; font-weight: bold; color: #000000;">${pVal}</td>
               </tr>
             `;
           });
@@ -6109,30 +6198,32 @@ Although natural geological sources account for the majority of arsenic contamin
             `;
           }
 
+          const paramHeaderCol = config.unit ? `${config.name} (${config.unit})` : config.name;
+
           annexuresHTML += `
-            <div style="page-break-before: always; font-family: 'Times New Roman', Times, serif; margin-top: 40px;">
-              <h3 style="font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
+            <div style="font-family: 'Times New Roman', Times, serif; margin-top: 20px;">
+              <h3 style="page-break-before: always; font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
                 ANNEXURE ${romanNum}
               </h3>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; font-weight: bold; margin-bottom: 10px; text-align: center; color: #334155;">
-                List of Locations Exceeding Permissible Limit for ${config.name} (${configKey})
+                List of Locations Exceeding Permissible Limit for ${config.name} (${formatChemicalFormula(configKey)}) - Season: ${displaySeasonText}, Year: ${displayYearText}
               </p>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; text-align: justify; line-height: 1.6; margin-bottom: 15px; color: #475569;">
-                The following table lists the groundwater sampling locations where the concentration of <strong>${config.name} (${configKey})</strong> was detected ${limitText} (BIS IS 10500:2012 guidelines). A total of <strong>${totalExceeded}</strong> location(s) exceeded the specified standard in the analyzed dataset.
+                The following table lists the groundwater sampling locations where the concentration of <strong>${config.name} (${formatChemicalFormula(configKey)})</strong> was detected ${limitText} (BIS IS 10500:2012 guidelines) during the <strong>${displaySeasonText} (${displayYearText})</strong> monitoring period. A total of <strong>${totalExceeded}</strong> location(s) exceeded the specified standard in the analyzed dataset.
               </p>
 
               <table border="1" cellpadding="5" cellspacing="0" style="width: 100%; table-layout: fixed; word-wrap: break-word; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; font-size: 10pt; text-align: left; margin-bottom: 10px; border: 1px solid #7f7f7f;">
                 <thead>
-                  <tr style="height: 0.3in; background-color: #f2f2f2; color: #000000; font-weight: bold; text-align: center;">
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 6%; font-weight: bold;">Sl. No.</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 12%; font-weight: bold;">State</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 12%; font-weight: bold;">District</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 12%; font-weight: bold;">Block</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 18%; font-weight: bold;">Location</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 10%; font-weight: bold;">Latitude</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 10%; font-weight: bold;">Longitude</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 10%; font-weight: bold;">Source</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 10%; font-weight: bold;">Value (${config.unit || "-"})</th>
+                  <tr style="background-color: #f2f2f2; color: #000000; font-weight: bold; text-align: center;">
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 6%; font-weight: bold; text-align: center;">Sl. No.</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 12%; font-weight: bold; text-align: left;">State</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 12%; font-weight: bold; text-align: left;">District</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 12%; font-weight: bold; text-align: left;">Block</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 18%; font-weight: bold; text-align: left;">Location</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 10%; font-weight: bold; text-align: center;">Latitude</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 10%; font-weight: bold; text-align: center;">Longitude</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 10%; font-weight: bold; text-align: center;">Source</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 10%; font-weight: bold; text-align: right;">${paramHeaderCol}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6164,9 +6255,9 @@ Although natural geological sources account for the majority of arsenic contamin
                 exceeds = true;
               }
               if (exceeds) {
-                const formattedVal = val.toFixed(configKey === "pH" ? 2 : (configKey === "As" || configKey === "U" ? 3 : 2));
+                const formattedVal = formatParameterValueForAnnexure(val, configKey);
                 const unitStr = config.unit ? ` ${config.unit}` : "";
-                exceededList.push(`${configKey}: ${formattedVal}${unitStr}`);
+                exceededList.push(`${formatChemicalFormula(configKey)}: ${formattedVal}${unitStr}`);
               }
             }
           });
@@ -6190,30 +6281,30 @@ Although natural geological sources account for the majority of arsenic contamin
           let consolidatedTableRowsHTML = "";
           slicedRows.forEach((item, rIdx) => {
             const d = item.row;
-            const sVal = String(d[stateHeader] || "").trim() || "N/A";
-            const dVal = String(d[districtHeader] || "").trim() || "N/A";
-            const bVal = String(d[blockHeader] || "").trim() || "N/A";
-            const lVal = String(d[locationHeader] || "").trim() || "N/A";
-            const latVal = String(d[latHeader] || "").trim() || "N/A";
-            const lngVal = String(d[lngHeader] || "").trim() || "N/A";
-            const srcVal = sourceHeader ? (String(d[sourceHeader] || "").trim() || "N/A") : "N/A";
+            const sVal = toProperCase(String(d[stateHeader] || ""));
+            const dVal = toProperCase(String(d[districtHeader] || ""));
+            const bVal = toProperCase(String(d[blockHeader] || ""));
+            const lVal = toProperCase(String(d[locationHeader] || ""));
+            const latVal = formatCoord(String(d[latHeader] || "").trim());
+            const lngVal = formatCoord(String(d[lngHeader] || "").trim());
+            const srcVal = sourceHeader ? (String(d[sourceHeader] || "")) : "N/A";
             const exceededCount = item.exceededParamsList.length;
             const exceededStr = item.exceededParamsList.join(", ");
 
             const rowBg = rIdx % 2 === 1 ? 'background-color: #f8fafc;' : '';
 
             consolidatedTableRowsHTML += `
-              <tr style="height: 0.3in; font-family: 'Times New Roman', Times, serif; font-size: 10pt;">
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${rIdx + 1}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${sVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${dVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${bVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${lVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${latVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${lngVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${srcVal}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center; font-weight: bold; color: #1e3a8a;">${exceededCount}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; font-weight: bold; color: #dc2626;">${exceededStr}</td>
+              <tr style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; ${rowBg}">
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${rIdx + 1}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: left;">${sVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: left;">${dVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: left;">${bVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: left;">${lVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${latVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${lngVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${srcVal}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: right; font-weight: bold; color: #1e3a8a;">${exceededCount}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: right; font-weight: bold; color: #000000;">${exceededStr}</td>
               </tr>
             `;
           });
@@ -6228,30 +6319,30 @@ Although natural geological sources account for the majority of arsenic contamin
           }
 
           annexuresHTML += `
-            <div style="page-break-before: always; font-family: 'Times New Roman', Times, serif; margin-top: 40px;">
-              <h3 style="font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
+            <div style="font-family: 'Times New Roman', Times, serif; margin-top: 20px;">
+              <h3 style="page-break-before: always; font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
                 ANNEXURE ${romanNum}
               </h3>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; font-weight: bold; margin-bottom: 10px; text-align: center; color: #334155;">
-                Consolidated List of Locations with One or More Parameter Exceedances
+                Consolidated List of Locations with One or More Parameter Exceedances - Season: ${displaySeasonText}, Year: ${displayYearText}
               </p>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; text-align: justify; line-height: 1.6; margin-bottom: 15px; color: #475569;">
-                The following table lists the groundwater sampling locations where one or more of the selected parameters exceeded the permissible limit (BIS IS 10500:2012 guidelines). A total of <strong>${totalExceeded}</strong> location(s) were found with at least one parameter exceedance.
+                The following table lists the groundwater sampling locations where one or more of the selected parameters exceeded the permissible limit (BIS IS 10500:2012 guidelines) during the <strong>${displaySeasonText} (${displayYearText})</strong> monitoring period. A total of <strong>${totalExceeded}</strong> location(s) were found with at least one parameter exceedance.
               </p>
 
               <table border="1" cellpadding="5" cellspacing="0" style="width: 100%; table-layout: fixed; word-wrap: break-word; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; font-size: 10pt; text-align: left; margin-bottom: 10px; border: 1px solid #7f7f7f;">
                 <thead>
-                  <tr style="height: 0.3in; background-color: #f2f2f2; color: #000000; font-weight: bold; text-align: center;">
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 5%; font-weight: bold;">Sl. No.</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 10%; font-weight: bold;">State</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 10%; font-weight: bold;">District</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 10%; font-weight: bold;">Block</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 14%; font-weight: bold;">Location</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 8%; font-weight: bold;">Latitude</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 8%; font-weight: bold;">Longitude</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 8%; font-weight: bold;">Source</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 10%; font-weight: bold;">No. of Parameters Exceeded</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 17%; font-weight: bold;">Parameter Exceeded with Values</th>
+                  <tr style="background-color: #f2f2f2; color: #000000; font-weight: bold; text-align: center;">
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 5%; font-weight: bold; text-align: center;">Sl. No.</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 10%; font-weight: bold; text-align: left;">State</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 10%; font-weight: bold; text-align: left;">District</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 10%; font-weight: bold; text-align: left;">Block</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 14%; font-weight: bold; text-align: left;">Location</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 8%; font-weight: bold; text-align: center;">Latitude</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 8%; font-weight: bold; text-align: center;">Longitude</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 8%; font-weight: bold; text-align: center;">Source</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 10%; font-weight: bold; text-align: right;">No. of Parameters Exceeded</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 17%; font-weight: bold; text-align: right;">Parameter Exceeded with Values</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6294,7 +6385,7 @@ Although natural geological sources account for the majority of arsenic contamin
                   abovePermissibleCount++;
                   const regionVal = String(d[regionHeader] || "").trim();
                   if (regionVal) {
-                    affectedRegionsSet.add(regionVal);
+                    affectedRegionsSet.add(toProperCase(regionVal));
                   }
                 }
               }
@@ -6318,14 +6409,14 @@ Although natural geological sources account for the majority of arsenic contamin
             const rowBg = validRowCount % 2 === 0 ? 'background-color: #f8fafc;' : '';
 
             summaryTableRowsHTML += `
-              <tr style="height: 0.3in; font-family: 'Times New Roman', Times, serif; font-size: 10pt;">
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${validRowCount}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; font-weight: bold;">${config.name} (${configKey})</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${limitStr}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center; font-weight: bold;">${abovePermissibleCount}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${pctAbove}%</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${noAffected}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; font-size: 9.5pt;">${namesAffected}</td>
+              <tr style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; ${rowBg}">
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${validRowCount}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; font-weight: bold;">${config.name} (${formatChemicalFormula(configKey)})</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${limitStr}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center; font-weight: bold;">${abovePermissibleCount}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${pctAbove}%</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${noAffected}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; font-size: 9.5pt;">${namesAffected}</td>
               </tr>
             `;
           });
@@ -6333,27 +6424,27 @@ Although natural geological sources account for the majority of arsenic contamin
           const regionTypeName = breakdownLevel === "State" ? "State/UTs" : "Districts";
 
           annexuresHTML += `
-            <div style="page-break-before: always; font-family: 'Times New Roman', Times, serif; margin-top: 40px;">
-              <h3 style="font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
+            <div style="font-family: 'Times New Roman', Times, serif; margin-top: 20px;">
+              <h3 style="page-break-before: always; font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
                 ANNEXURE ${romanNum}
               </h3>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; font-weight: bold; margin-bottom: 10px; text-align: center; color: #334155;">
-                Overall Water Quality Exceedance and Spatial Coverage Summary for Selected Parameters
+                Overall Water Quality Exceedance and Spatial Coverage Summary for Selected Parameters - Season: ${displaySeasonText}, Year: ${displayYearText}
               </p>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; text-align: justify; line-height: 1.6; margin-bottom: 15px; color: #475569;">
-                The following table provides a comprehensive consolidation of groundwater exceedance statistics and spatial impact across the monitored areas for all selected water quality parameters, assessed in reference to Bureau of Indian Standards (BIS IS 10500:2012) standards.
+                The following table provides a comprehensive consolidation of groundwater exceedance statistics and spatial impact across the monitored areas for all selected water quality parameters during the <strong>${displaySeasonText} (${displayYearText})</strong> period, assessed in reference to Bureau of Indian Standards (BIS IS 10500:2012) standards.
               </p>
 
               <table border="1" cellpadding="5" cellspacing="0" style="width: 100%; table-layout: fixed; word-wrap: break-word; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; font-size: 10pt; text-align: left; margin-bottom: 25px; border: 1px solid #7f7f7f;">
                 <thead>
-                  <tr style="height: 0.3in; background-color: #f2f2f2; color: #000000; font-weight: bold; text-align: center;">
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 5%; font-weight: bold;">Sl. No.</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 18%; font-weight: bold;">Parameter</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 12%; font-weight: bold;">Permissible Limits</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 12%; font-weight: bold;">No. of Samples Above Permissible Limit</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 12%; font-weight: bold;">Percentage of Samples Above Permissible Limit</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 11%; font-weight: bold;">No. of Partially Affected ${regionTypeName}</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 30%; font-weight: bold;">Name(s) of Partially Affected ${regionTypeName}</th>
+                  <tr style="background-color: #f2f2f2; color: #000000; font-weight: bold; text-align: center;">
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 5%; font-weight: bold;">Sl. No.</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 18%; font-weight: bold;">Parameter</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 12%; font-weight: bold;">Permissible Limits</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 12%; font-weight: bold;">No. of Samples Above Permissible Limit</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 12%; font-weight: bold;">Percentage of Samples Above Permissible Limit</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 11%; font-weight: bold;">No. of Partially Affected ${regionTypeName}</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 30%; font-weight: bold;">Name(s) of Partially Affected ${regionTypeName}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6406,7 +6497,7 @@ Although natural geological sources account for the majority of arsenic contamin
                 }
                 if (exceeds) {
                   sampleExceeded = true;
-                  rData.exceededParams.add(`${config.name} (${configKey})`);
+                  rData.exceededParams.add(`${config.name} (${formatChemicalFormula(configKey)})`);
                 }
               }
             });
@@ -6435,38 +6526,38 @@ Although natural geological sources account for the majority of arsenic contamin
             const rowBg = rIndex % 2 === 0 ? 'background-color: #f8fafc;' : '';
 
             regionalTableRowsHTML += `
-              <tr style="height: 0.3in; font-family: 'Times New Roman', Times, serif; font-size: 10pt;">
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${rIndex}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; font-weight: bold;">${rName}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${data.totalAnalysed}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center; font-weight: bold; color: #dc2626;">${data.exceededSamples}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center; font-weight: bold;">${noParamsContaminated}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; font-size: 9.5pt;">${paramsContaminatedStr}</td>
+              <tr style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; ${rowBg}">
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${rIndex}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; font-weight: bold;">${toProperCase(rName)}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${data.totalAnalysed}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center; font-weight: bold; color: #000000;">${data.exceededSamples}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center; font-weight: bold;">${noParamsContaminated}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; font-size: 9.5pt;">${paramsContaminatedStr}</td>
               </tr>
             `;
           });
 
           annexuresHTML += `
-            <div style="page-break-before: always; font-family: 'Times New Roman', Times, serif; margin-top: 40px;">
-              <h3 style="font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
+            <div style="font-family: 'Times New Roman', Times, serif; margin-top: 20px;">
+              <h3 style="page-break-before: always; font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
                 ANNEXURE ${romanNum}
               </h3>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; font-weight: bold; margin-bottom: 10px; text-align: center; color: #334155;">
-                Regional Water Quality Contamination Profiling (${regionTypeName} Level)
+                Regional Water Quality Contamination Profiling (${regionTypeName} Level) - Season: ${displaySeasonText}, Year: ${displayYearText}
               </p>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; text-align: justify; line-height: 1.6; margin-bottom: 15px; color: #475569;">
-                The following table compiles the water quality contamination profile across individual <strong>${regionTypeName}s</strong>. It illustrates the total number of analyzed samples, the count of samples exceeding at least one selected parameter, the number of distinct contaminated parameters, and the names of the specific parameters causing the contamination in each region.
+                The following table compiles the water quality contamination profile across individual <strong>${regionTypeName}s</strong> during the <strong>${displaySeasonText} (${displayYearText})</strong> period. It illustrates the total number of analyzed samples, the count of samples exceeding at least one selected parameter, the number of distinct contaminated parameters, and the names of the specific parameters causing the contamination in each region.
               </p>
 
               <table border="1" cellpadding="5" cellspacing="0" style="width: 100%; table-layout: fixed; word-wrap: break-word; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; font-size: 10pt; text-align: left; margin-bottom: 25px; border: 1px solid #7f7f7f;">
                 <thead>
-                  <tr style="height: 0.3in; background-color: #f2f2f2; color: #000000; font-weight: bold; text-align: center;">
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 5%; font-weight: bold;">Sl. No.</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 20%; font-weight: bold;">${regionTypeName}</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 15%; font-weight: bold;">Total No. of Analysed Samples</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 18%; font-weight: bold;">No. of Samples Exceeding One or More Selected Parameters</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 15%; font-weight: bold;">No. of Contaminated Parameters</th>
-                    <th style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; width: 27%; font-weight: bold;">Name(s) of Affected Parameters</th>
+                  <tr style="background-color: #f2f2f2; color: #000000; font-weight: bold; text-align: center;">
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 5%; font-weight: bold;">Sl. No.</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 20%; font-weight: bold;">${regionTypeName}</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 15%; font-weight: bold;">Total No. of Analysed Samples</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 18%; font-weight: bold;">No. of Samples Exceeding One or More Selected Parameters</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 15%; font-weight: bold;">No. of Contaminated Parameters</th>
+                    <th style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; width: 27%; font-weight: bold;">Name(s) of Affected Parameters</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6523,7 +6614,7 @@ Although natural geological sources account for the majority of arsenic contamin
                 }
                 if (exceeds) {
                   sampleExceeded = true;
-                  group.exceededParams.add(`${config.name} (${configKey})`);
+                  group.exceededParams.add(`${config.name} (${formatChemicalFormula(configKey)})`);
                 }
               }
             });
@@ -6560,22 +6651,22 @@ Although natural geological sources account for the majority of arsenic contamin
             const rowBg = dIdx % 2 === 0 ? 'background-color: #f8fafc;' : '';
 
             distContamRowsHTML += `
-              <tr style="height: 0.3in; font-family: 'Times New Roman', Times, serif; font-size: 10pt;">
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${dIdx}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle;">${g.stateName}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; font-weight: bold;">${g.districtName}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center;">${g.totalAnalysed}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center; font-weight: bold; color: #dc2626;">${g.exceededSamples}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center; font-weight: bold; color: #dc2626;">${pctExceeded}%</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; text-align: center; font-weight: bold;">${numContaminatedParams}</td>
-                <td style="border: 1px solid #7f7f7f; padding: 0 4px; height: 0.3in; box-sizing: border-box; vertical-align: middle; font-size: 9.5pt; font-style: italic;">${contaminatedParamsStr}</td>
+              <tr style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; ${rowBg}">
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${dIdx}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle;">${g.stateName}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; font-weight: bold;">${g.districtName}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center;">${g.totalAnalysed}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center; font-weight: bold; color: #000000;">${g.exceededSamples}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center; font-weight: bold; color: #000000;">${pctExceeded}%</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; text-align: center; font-weight: bold;">${numContaminatedParams}</td>
+                <td style="border: 1px solid #7f7f7f; padding: 2px 4px; vertical-align: middle; font-size: 9.5pt; font-style: italic;">${contaminatedParamsStr}</td>
               </tr>
             `;
           });
 
           const annexTitle = `ANNEXURE ${romanNum}`;
-          const annexSub = "District-Wise Water Quality Contamination Summary for Selected Parameters";
-          const annexDesc = `The following table compiles the detailed district-wise groundwater contamination analysis for the selected water quality parameter(s). It details the total number of samples analysed, the count and percentage of samples exceeding the permissible limits, the total number of contaminated parameters, and the names of the specific parameters exceeding the standards within each district.`;
+          const annexSub = `District-Wise Water Quality Contamination Summary for Selected Parameters - Season: ${displaySeasonText}, Year: ${displayYearText}`;
+          const annexDesc = `The following table compiles the detailed district-wise groundwater contamination analysis for the selected water quality parameter(s) during the <strong>${displaySeasonText} (${displayYearText})</strong> period. It details the total number of samples analysed, the count and percentage of samples exceeding the permissible limits, the total number of contaminated parameters, and the names of the specific parameters exceeding the standards within each district.`;
 
           const thSlNo = "Sl. No.";
           const thState = "State/ UT";
@@ -6587,8 +6678,8 @@ Although natural geological sources account for the majority of arsenic contamin
           const thNamesContam = "Name(s) of contaminated parameters";
 
           annexuresHTML += `
-            <div style="page-break-before: always; font-family: 'Times New Roman', Times, serif; margin-top: 40px;">
-              <h3 style="font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
+            <div style="font-family: 'Times New Roman', Times, serif; margin-top: 20px;">
+              <h3 style="page-break-before: always; font-family: 'Times New Roman', Times, serif; font-size: 14pt; font-weight: bold; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 5px; color: #1e3a8a; text-transform: uppercase; margin-bottom: 15px; text-align: center;">
                 ${annexTitle}
               </h3>
               <p style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; font-weight: bold; margin-bottom: 10px; text-align: center; color: #334155;">

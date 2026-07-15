@@ -8,9 +8,14 @@ interface LimitsManagerViewProps {
 
 export default function LimitsManagerView({ onLimitsChanged }: LimitsManagerViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const isExcluded = (key: string) => {
+    return ["CO3", "HCO3", "Na", "K"].includes(key.toUpperCase());
+  };
+
   const [editingLimits, setEditingLimits] = useState<Record<string, { b1: string; b2: string }>>(() => {
     const initial: Record<string, { b1: string; b2: string }> = {};
     Object.keys(PARAM_CONFIG).forEach((key) => {
+      if (isExcluded(key)) return;
       initial[key] = {
         b1: String(PARAM_CONFIG[key].b1),
         b2: String(PARAM_CONFIG[key].b2),
@@ -46,6 +51,7 @@ export default function LimitsManagerView({ onLimitsChanged }: LimitsManagerView
   const validateAll = (): boolean => {
     const errors: Record<string, string> = {};
     Object.keys(PARAM_CONFIG).forEach((key) => {
+      if (isExcluded(key)) return;
       const b1Val = parseFloat(editingLimits[key].b1);
       const b2Val = parseFloat(editingLimits[key].b2);
 
@@ -74,6 +80,7 @@ export default function LimitsManagerView({ onLimitsChanged }: LimitsManagerView
     }
 
     Object.keys(editingLimits).forEach((key) => {
+      if (isExcluded(key)) return;
       const b1 = parseFloat(editingLimits[key].b1);
       const b2 = parseFloat(editingLimits[key].b2);
       updateParamLimits(key, b1, b2);
@@ -91,6 +98,7 @@ export default function LimitsManagerView({ onLimitsChanged }: LimitsManagerView
       resetParamLimits();
       const resetState: Record<string, { b1: string; b2: string }> = {};
       Object.keys(DEFAULT_PARAM_CONFIG).forEach((key) => {
+        if (isExcluded(key)) return;
         resetState[key] = {
           b1: String(DEFAULT_PARAM_CONFIG[key].b1),
           b2: String(DEFAULT_PARAM_CONFIG[key].b2),
@@ -108,10 +116,13 @@ export default function LimitsManagerView({ onLimitsChanged }: LimitsManagerView
   };
 
   const filteredKeys = Object.keys(PARAM_CONFIG).filter((key) => {
+    if (isExcluded(key)) return false;
     const cfg = PARAM_CONFIG[key];
     const matchStr = `${key} ${cfg.name}`.toLowerCase();
     return matchStr.includes(searchTerm.toLowerCase());
   });
+
+  const totalParamsCount = Object.keys(PARAM_CONFIG).filter((key) => !isExcluded(key)).length;
 
   return (
     <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xl relative overflow-hidden">
@@ -178,7 +189,7 @@ export default function LimitsManagerView({ onLimitsChanged }: LimitsManagerView
           />
         </div>
         <div className="text-[11px] font-bold text-slate-500 uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
-          Showing <span className="text-indigo-600 font-extrabold">{filteredKeys.length}</span> of <span className="text-indigo-600 font-extrabold">{Object.keys(PARAM_CONFIG).length}</span> parameters
+          Showing <span className="text-indigo-600 font-extrabold">{filteredKeys.length}</span> of <span className="text-indigo-600 font-extrabold">{totalParamsCount}</span> parameters
         </div>
       </div>
 

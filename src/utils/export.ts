@@ -269,11 +269,11 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
           const w = Math.max(50, parseInt(imgWidth, 10) || 550);
           const h = Math.max(50, parseInt(imgHeight, 10) || 400);
 
-          const scaleFactor = 4.0; // High-resolution (300 DPI equivalent)
+          const scaleFactor = 8.0; // High-resolution (600 DPI equivalent)
           let targetW = Math.round(w * scaleFactor);
           let targetH = Math.round(h * scaleFactor);
 
-          const maxDimension = 4096;
+          const maxDimension = 8192;
           if (targetW > maxDimension || targetH > maxDimension) {
             const ratio = Math.min(maxDimension / targetW, maxDimension / targetH);
             targetW = Math.round(targetW * ratio);
@@ -374,11 +374,11 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
         .replace(/&sup3;/g, "&#179;")
         .replace(/&(?!(amp|lt|gt|quot|apos|#\d+);)/g, "&amp;");
 
-      const scaleFactor = 4.0; // High-resolution (300 DPI equivalent)
+      const scaleFactor = 8.0; // High-resolution (600 DPI equivalent)
       let targetW = Math.max(100, Math.round(w * scaleFactor) || 550);
       let targetH = Math.max(100, Math.round(h * scaleFactor) || 400);
 
-      const maxDimension = 4096;
+      const maxDimension = 8192;
       if (targetW > maxDimension || targetH > maxDimension) {
         const ratio = Math.min(maxDimension / targetW, maxDimension / targetH);
         targetW = Math.round(targetW * ratio);
@@ -446,61 +446,125 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
     }
   });
 
-  // Post-process all tables to make them simple MS Word tables (allowing easy drag-resizing of height/width)
+  // Post-process all tables to make them simple MS Word tables with ultra-compact formatting
   const tables = Array.from(div.getElementsByTagName("table"));
   tables.forEach((table) => {
-    // Remove all cols and colgroups to let MS Word handle autofit and resizing natively
+    // Keep or strip col and colgroup - let's remove them and rely on explicit cell width styles
     const cols = Array.from(table.querySelectorAll("col, colgroup"));
     cols.forEach((c) => c.parentNode?.removeChild(c));
 
     // Force standard border and padding attributes for Word compatibility
     table.setAttribute("border", "1");
-    table.setAttribute("cellpadding", "5");
+    table.setAttribute("cellpadding", "1"); // Minimized padding
     table.setAttribute("cellspacing", "0");
     table.setAttribute("width", "100%");
     
-    // Clean up table-level inline styles to avoid rigid widths or heights
-    table.setAttribute("style", "width: 100%; border-collapse: collapse; margin-top: 12pt; margin-bottom: 18pt;");
+    // Force fixed table layout with 100% width
+    table.setAttribute("style", "width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 12pt; margin-bottom: 18pt;");
 
-    // Clean up all rows to strip height locks and let Word handle row heights dynamically
     const rows = Array.from(table.getElementsByTagName("tr"));
+
+    // Extract explicit column widths from the first row of cells (usually headers) so we can enforce them on all rows
+    const colWidths: string[] = [];
+    if (rows.length > 0) {
+      const firstRowCells = Array.from(rows[0].querySelectorAll("th, td"));
+      firstRowCells.forEach((cell) => {
+        const style = cell.getAttribute("style") || "";
+        let w = cell.getAttribute("width") || "";
+        const wMatch = style.match(/width\s*:\s*([^;]+)/i);
+        if (wMatch) {
+          w = wMatch[1].trim();
+        }
+        colWidths.push(w);
+      });
+    }
+
     rows.forEach((row) => {
       row.removeAttribute("height");
-      row.removeAttribute("style");
-    });
-
-    // Clean up all cells to strip rigid widths/heights and let Word auto-layout
-    const cells = Array.from(table.querySelectorAll("th, td"));
-    cells.forEach((cell) => {
-      cell.removeAttribute("width");
-      cell.removeAttribute("height");
-      cell.classList.remove("whitespace-nowrap");
+      const currentStyle = row.getAttribute("style") || "";
+      const bgMatch = currentStyle.match(/background-color\s*:\s*([^;]+)/i);
+      const bgColor = bgMatch ? bgMatch[1] : "";
       
-      const cellStyle = cell.getAttribute("style") || "";
-      const cleanedCellStyle = cellStyle
-        .replace(/width\s*:[^;]+;?/gi, "")
-        .replace(/min-width\s*:[^;]+;?/gi, "")
-        .replace(/max-width\s*:[^;]+;?/gi, "")
-        .replace(/height\s*:[^;]+;?/gi, "")
-        .replace(/min-height\s*:[^;]+;?/gi, "")
-        .replace(/max-height\s*:[^;]+;?/gi, "")
-        .replace(/line-height\s*:[^;]+;?/gi, "")
-        .replace(/white-space\s*:[^;]+;?/gi, "")
-        .replace(/padding\s*:[^;]+;?/gi, "") // Allow cell padding to be natively driven
-        .replace(/display\s*:[^;]+;?/gi, "");
-
-      if (cleanedCellStyle.trim()) {
-        cell.setAttribute("style", cleanedCellStyle);
-      } else {
-        cell.removeAttribute("style");
+      const isHeader = row.parentElement?.tagName.toLowerCase() === "thead" || row.querySelector("th") !== null;
+      
+      // Row height will be automatic to fit the text exactly
+      let rowStyle = "";
+      
+      if (bgColor) {
+        rowStyle += ` background-color: ${bgColor};`;
       }
+      if (/font-weight\s*:\s*bold/i.test(currentStyle)) {
+        rowStyle += " font-weight: bold;";
+      }
+      if (/text-align\s*:\s*center/i.test(currentStyle)) {
+        rowStyle += " text-align: center;";
+      }
+      row.setAttribute("style", rowStyle);
 
-      // Flatten nested divs inside cells into simple inline spans. Word handles text and inline spans inside cells beautifully, but hates block divs.
-      const cellDivs = Array.from(cell.getElementsByTagName("div"));
-      cellDivs.forEach((innerDiv) => {
-        const span = document.createElement("span");
-        span.innerHTML = innerDiv.innerHTML;
-        innerDiv.parentNode?.replaceChild(span, innerDiv);
+      const cells = Array.from(row.querySelectorAll("th, td"));
+      cells.forEach((cell, colIndex) => {
+        cell.removeAttribute("width");
+        cell.removeAttribute("height");
+        cell.classList.remove("whitespace-nowrap");
+        
+        const cellStyle = cell.getAttribute("style") || "";
+        let cleanedCellStyle = cellStyle
+          .replace(/width\s*:[^;]+;?/gi, "")
+          .replace(/min-width\s*:[^;]+;?/gi, "")
+          .replace(/max-width\s*:[^;]+;?/gi, "")
+          .replace(/height\s*:[^;]+;?/gi, "")
+          .replace(/min-height\s*:[^;]+;?/gi, "")
+          .replace(/max-height\s*:[^;]+;?/gi, "")
+          .replace(/line-height\s*:[^;]+;?/gi, "")
+          .replace(/white-space\s*:[^;]+;?/gi, "")
+          .replace(/padding\s*:[^;]+;?/gi, "")
+          .replace(/display\s*:[^;]+;?/gi, "");
+        
+        const isTh = cell.tagName.toLowerCase() === "th";
+        const isBold = isTh || /font-weight\s*:\s*bold/i.test(cellStyle);
+        const fontSize = isTh ? "10pt" : "9.5pt";
+        
+        // Propagate the corresponding column width from the header
+        const explicitWidth = colWidths[colIndex] || "";
+        if (explicitWidth) {
+          cleanedCellStyle += ` width: ${explicitWidth};`;
+          cell.setAttribute("width", explicitWidth.replace("%", ""));
+        }
+        
+        // 1. Padding: Top/Bottom = 15twips (~0.75pt), Left/Right = 40twips (~2pt)
+        // 2. Vertical centering: vertical-align: middle; mso-vertical-align-alt: middle;
+        // 3. Spacing: line-height: 1.0; mso-line-height-rule: exactly;
+        // 4. Wrapping: word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; white-space: normal !important;
+        cleanedCellStyle += ` font-family: 'Times New Roman', Times, serif; font-size: ${fontSize}; padding: 0.75pt 2pt; mso-padding-top-alt: 15twips; mso-padding-bottom-alt: 15twips; mso-padding-left-alt: 40twips; mso-padding-right-alt: 40twips; ${isBold ? "font-weight: bold;" : ""} line-height: 1.0; mso-line-height-rule: exactly; vertical-align: middle; mso-vertical-align-alt: middle; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; white-space: normal !important; margin: 0pt; margin-top: 0pt; margin-bottom: 0pt; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt;`;
+        
+        // Align headers centered by default, data aligned according to existing style or left
+        if (isTh) {
+          cleanedCellStyle += " text-align: center;";
+        } else if (!/text-align/i.test(cleanedCellStyle)) {
+          cleanedCellStyle += " text-align: left;";
+        }
+
+        cell.setAttribute("style", cleanedCellStyle);
+
+        // Strip any paragraph spacing within table cells to strictly follow single-spacing and 0 margins
+        const cellParagraphs = Array.from(cell.getElementsByTagName("p"));
+        if (cellParagraphs.length > 0) {
+          cellParagraphs.forEach((p) => {
+            p.setAttribute("style", `margin: 0 !important; padding: 0 !important; font-family: 'Times New Roman', Times, serif; font-size: ${fontSize}; line-height: 1.0 !important; mso-line-height-rule: exactly !important; mso-margin-top-alt: 0pt !important; mso-margin-bottom-alt: 0pt !important; text-align: ${isTh ? "center" : "left"};`);
+          });
+        } else {
+          // Wrap text inside cell in a single <p> to force Word to apply paragraph settings (Before=0, After=0, LineSpacing=Single)
+          const originalHTML = cell.innerHTML.trim();
+          cell.innerHTML = `<p style="margin: 0 !important; padding: 0 !important; font-family: 'Times New Roman', Times, serif; font-size: ${fontSize}; line-height: 1.0 !important; mso-line-height-rule: exactly !important; mso-margin-top-alt: 0pt !important; mso-margin-bottom-alt: 0pt !important; text-align: ${isTh ? "center" : "left"};">${originalHTML}</p>`;
+        }
+
+        // Flatten nested divs inside cells into simple inline spans. Word handles text and inline spans inside cells beautifully, but hates block divs.
+        const cellDivs = Array.from(cell.getElementsByTagName("div"));
+        cellDivs.forEach((innerDiv) => {
+          const span = document.createElement("span");
+          span.innerHTML = innerDiv.innerHTML;
+          innerDiv.parentNode?.replaceChild(span, innerDiv);
+        });
       });
     });
   });
@@ -524,10 +588,10 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
 <![endif]-->
 <style>
   @page Section1 {
-    size: 8.5in 11.0in;
-    margin: 1.0in 1.0in 1.0in 1.0in;
-    mso-header-margin: 0.5in;
-    mso-footer-margin: 0.5in;
+    size: 8.27in 11.69in; /* Standard A4 Size */
+    margin: 0.6in 0.6in 0.6in 0.6in;
+    mso-header-margin: 0.3in;
+    mso-footer-margin: 0.3in;
     mso-paper-source: 0;
   }
   div.Section1 {
@@ -542,36 +606,59 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
     padding: 0;
   }
   h1, h2, h3, h4 {
-    font-family: 'Arial', sans-serif;
+    font-family: 'Times New Roman', Times, serif;
     color: #1e3a8a;
     margin-top: 18pt;
     margin-bottom: 6pt;
+    font-weight: bold;
   }
   h1 { font-size: 20pt; text-align: center; margin-bottom: 12pt; }
   h2 { font-size: 15pt; border-bottom: 1.5pt solid #cbd5e1; padding-bottom: 3pt; }
   h3 { font-size: 13pt; }
   table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     margin-top: 12pt;
     margin-bottom: 18pt;
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 9.5pt;
   }
   tr {
-    /* No rigid height rule to allow seamless dynamic row sizing and manual dragging */
   }
   th, td {
-    border: 1pt solid #475569;
-    padding: 5pt 8pt;
-    text-align: center;
+    border: 1pt solid #7f7f7f;
+    padding: 0.75pt 2pt;
+    mso-padding-top-alt: 15twips;
+    mso-padding-bottom-alt: 15twips;
+    mso-padding-left-alt: 40twips;
+    mso-padding-right-alt: 40twips;
+    text-align: left;
     vertical-align: middle;
-    font-size: 10pt;
+    mso-vertical-align-alt: middle;
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 9.5pt;
     white-space: normal !important;
     word-break: break-word;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.0;
+    mso-line-height-rule: exactly;
+  }
+  table th p, table td p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.0 !important;
+    mso-line-height-rule: exactly !important;
+    mso-margin-top-alt: 0pt !important;
+    mso-margin-bottom-alt: 0pt !important;
   }
   th {
-    background-color: #f1f5f9;
+    font-size: 10pt;
+    background-color: #f2f2f2;
     font-weight: bold;
-    color: #1e3a8a;
+    color: #000000;
+    text-align: center;
   }
   .text-left { text-align: left; }
   .text-right { text-align: right; }
