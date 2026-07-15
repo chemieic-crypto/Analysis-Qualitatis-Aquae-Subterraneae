@@ -1,0 +1,8 @@
+{
+  "name": "Groundwater Compliance Reporting Engine",
+  "description": "Assess groundwater quality against Bureau of Indian Standards IS 10500, generating customized compliance mapping, spatial stats, exceedance logs, and official bulletins.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
