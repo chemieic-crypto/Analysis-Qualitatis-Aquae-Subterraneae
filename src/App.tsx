@@ -1002,7 +1002,7 @@ export default function App() {
 
           {/* 3. Modern Live Date and Time Display */}
           <div className="flex flex-row md:flex-col items-center md:items-end gap-1 shrink-0 w-full md:w-auto justify-between md:justify-end text-right select-none">
-            <span className="text-xl md:text-2xl font-black text-[#ff6b00] font-mono tracking-tight tabular-nums">
+            <span className="text-xl md:text-2xl font-black text-black font-mono tracking-tight tabular-nums">
               {(() => {
                 const hours = String(currentDateTime.getHours() % 12 || 12).padStart(2, '0');
                 const minutes = String(currentDateTime.getMinutes()).padStart(2, '0');
@@ -1012,7 +1012,7 @@ export default function App() {
                 return `${hours}:${minutes}:${seconds}.${ms} ${ampm}`;
               })()}
             </span>
-            <span className="text-xs font-extrabold text-[#58c30c] tracking-wide uppercase">
+            <span className="text-xs font-extrabold text-[#8B4513] tracking-wide uppercase">
               {currentDateTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           </div>
