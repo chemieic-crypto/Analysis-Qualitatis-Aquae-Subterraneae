@@ -52,9 +52,34 @@ const COLUMN_DEFINITIONS = [
   { id: "SO4", label: "Sulphate (SO4)", aliases: ["so4", "sulphate", "sulfate"] },
   { id: "HCO3", label: "Bicarbonate (HCO3)", aliases: ["hco3", "bicarbonate"] },
   { id: "CO3", label: "Carbonate (CO3)", aliases: ["co3", "carbonate"] },
+  { id: "Fe", label: "Iron (Fe)", aliases: ["fe", "iron", "fe (mg/l)", "iron (fe)"] },
+  { id: "As", label: "Arsenic (As)", aliases: ["as", "arsenic", "as (mg/l)", "arsenic (as)", "arsenic(as)"] },
+  { id: "U", label: "Uranium (U)", aliases: ["u", "uranium", "u (mg/l)", "uranium (u)", "uranium(u)"] },
+  { id: "Zn", label: "Zinc (Zn)", aliases: ["zn", "zinc", "zn (mg/l)", "zinc (zn)"] },
+  { id: "Cu", label: "Copper (Cu)", aliases: ["cu", "copper", "cu (mg/l)", "copper (cu)"] },
+  { id: "Pb", label: "Lead (Pb)", aliases: ["pb", "lead", "pb (mg/l)", "lead (pb)"] },
+  { id: "Cd", label: "Cadmium (Cd)", aliases: ["cd", "cadmium", "cd (mg/l)", "cadmium (cd)"] },
+  { id: "Cr", label: "Chromium (Cr)", aliases: ["cr", "chromium", "cr (mg/l)", "chromium (cr)"] },
+  { id: "Hg", label: "Mercury (Hg)", aliases: ["hg", "mercury", "hg (mg/l)", "mercury (hg)"] },
+  { id: "Ni", label: "Nickel (Ni)", aliases: ["ni", "nickel", "ni (mg/l)", "nickel (ni)"] },
+  { id: "Se", label: "Selenium (Se)", aliases: ["se", "selenium", "se (mg/l)", "selenium (se)"] },
+  { id: "Mn", label: "Manganese (Mn)", aliases: ["mn", "manganese", "mn (mg/l)", "manganese (mn)"] },
+  { id: "Al", label: "Aluminium (Al)", aliases: ["al", "aluminium", "aluminum", "al (mg/l)", "aluminium (al)"] },
+  { id: "Ba", label: "Barium (Ba)", aliases: ["ba", "barium", "ba (mg/l)", "barium (ba)"] },
+  { id: "B", label: "Boron (B)", aliases: ["b", "boron", "b (mg/l)", "boron (b)"] },
+  { id: "Mo", label: "Molybdenum (Mo)", aliases: ["mo", "molybdenum", "mo (mg/l)", "molybdenum (mo)"] },
   { id: "Season", label: "Season / Period", aliases: ["season", "period"] },
   { id: "Year", label: "Year", aliases: ["year"] }
 ];
+
+export const formatAdvanced = (value: any, decimals: number = 2): string => {
+  if (value === null || value === undefined || value === "" || isNaN(Number(value))) return "-";
+  const num = Number(value);
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+};
 
 export default function HydrochemistryView({
   rawData: mainRawData,
@@ -226,6 +251,11 @@ export default function HydrochemistryView({
       const kellyIndex = meq_Ca + meq_Mg > 0 ? meq_Na / (meq_Ca + meq_Mg) : 0;
       const magnesiumHazard = meq_Ca + meq_Mg > 0 ? (meq_Mg / (meq_Ca + meq_Mg)) * 100 : 0;
 
+      // Total Alkalinity (as CaCO3 mg/L) = (meq_HCO3 + meq_CO3) * 50
+      const totalAlkalinityCalc = (meq_HCO3 + meq_CO3) * 50;
+      // Calculated TDS (mg/L) = EC * 0.64
+      const tdsCalc = EC * 0.64;
+
       return {
         ...row,
         "S.No.": idx + 1,
@@ -260,7 +290,26 @@ export default function HydrochemistryView({
         "pct_HCO3_plus_CO3": Number(pct_HCO3_CO3.toFixed(2)),
         "PI_calc": Number(pi.toFixed(2)),
         "Kelly_Index_calc": Number(kellyIndex.toFixed(3)),
-        "Magnesium_Hazard_calc": Number(magnesiumHazard.toFixed(2))
+        "Magnesium_Hazard_calc": Number(magnesiumHazard.toFixed(2)),
+        "Total_Alkalinity_calc": Number(totalAlkalinityCalc.toFixed(2)),
+        "TDS_calc": Number(tdsCalc.toFixed(2)),
+        // Heavy metals mapping
+        "Fe": columnMapping["Fe"] ? getNum("Fe") : undefined,
+        "As": columnMapping["As"] ? getNum("As") : undefined,
+        "U": columnMapping["U"] ? getNum("U") : undefined,
+        "Zn": columnMapping["Zn"] ? getNum("Zn") : undefined,
+        "Cu": columnMapping["Cu"] ? getNum("Cu") : undefined,
+        "Pb": columnMapping["Pb"] ? getNum("Pb") : undefined,
+        "Cd": columnMapping["Cd"] ? getNum("Cd") : undefined,
+        "Cr": columnMapping["Cr"] ? getNum("Cr") : undefined,
+        "Hg": columnMapping["Hg"] ? getNum("Hg") : undefined,
+        "Ni": columnMapping["Ni"] ? getNum("Ni") : undefined,
+        "Se": columnMapping["Se"] ? getNum("Se") : undefined,
+        "Mn": columnMapping["Mn"] ? getNum("Mn") : undefined,
+        "Al": columnMapping["Al"] ? getNum("Al") : undefined,
+        "Ba": columnMapping["Ba"] ? getNum("Ba") : undefined,
+        "B": columnMapping["B"] ? getNum("B") : undefined,
+        "Mo": columnMapping["Mo"] ? getNum("Mo") : undefined
       };
     });
   }, [mainRawData, columnMapping]);
@@ -340,8 +389,30 @@ export default function HydrochemistryView({
         { header: "Gibbs Cation Ratio", key: "Gibbs_Cation_Ratio", width: 15 },
         { header: "Permeability Index (PI)", key: "PI_calc", width: 18 },
         { header: "Kelly Index", key: "Kelly_Index_calc", width: 15 },
-        { header: "Magnesium Hazard (%)", key: "Magnesium_Hazard_calc", width: 18 }
+        { header: "Magnesium Hazard (%)", key: "Magnesium_Hazard_calc", width: 18 },
+        { header: "Total Alkalinity (Calculated, mg/L as CaCO3)", key: "Total_Alkalinity_calc", width: 22 },
+        { header: "Calculated TDS (EC * 0.64, mg/L)", key: "TDS_calc", width: 20 },
+        // Piper Percentages (meq %) columns
+        { header: "% Ca (meq)", key: "pct_Ca", width: 12 },
+        { header: "% Mg (meq)", key: "pct_Mg", width: 12 },
+        { header: "% (Na+K) (meq)", key: "pct_Na_plus_K", width: 15 },
+        { header: "% (CO3+HCO3) (meq)", key: "pct_HCO3_plus_CO3", width: 18 },
+        { header: "% SO4 (meq)", key: "pct_SO4", width: 12 },
+        { header: "% Cl (meq)", key: "pct_Cl", width: 12 }
       ];
+
+      // Dynamically add heavy metals columns to the excel if mapped in columnMapping
+      const heavyMetalsKeys = ["Fe", "As", "U", "Zn", "Cu", "Pb", "Cd", "Cr", "Hg", "Ni", "Se", "Mn", "Al", "Ba", "B", "Mo"];
+      heavyMetalsKeys.forEach(k => {
+        if (columnMapping[k]) {
+          const colLabel = COLUMN_DEFINITIONS.find(def => def.id === k)?.label || k;
+          excelColumns.push({
+            header: `${colLabel} (mg/L)`,
+            key: k,
+            width: 15
+          });
+        }
+      });
 
       sheet.columns = excelColumns;
 
@@ -352,7 +423,7 @@ export default function HydrochemistryView({
           return row[key] !== undefined ? row[key] : "";
         };
 
-        sheet.addRow({
+        const rowDataToSubmit: any = {
           S_No: row["S.No."],
           WellID: getVal("WellId") || getVal("WellID") || row["WellID"] || row["Well ID"] || "",
           State: getVal("State") || "",
@@ -397,8 +468,25 @@ export default function HydrochemistryView({
           Gibbs_Cation_Ratio: row.Gibbs_Cation_Ratio,
           PI_calc: row.PI_calc,
           Kelly_Index_calc: row.Kelly_Index_calc,
-          Magnesium_Hazard_calc: row.Magnesium_Hazard_calc
+          Magnesium_Hazard_calc: row.Magnesium_Hazard_calc,
+          Total_Alkalinity_calc: row.Total_Alkalinity_calc,
+          TDS_calc: row.TDS_calc,
+          pct_Ca: row.pct_Ca,
+          pct_Mg: row.pct_Mg,
+          pct_Na_plus_K: row.pct_Na_plus_K,
+          pct_HCO3_plus_CO3: row.pct_HCO3_plus_CO3,
+          pct_SO4: row.pct_SO4,
+          pct_Cl: row.pct_Cl
+        };
+
+        // Inject heavy metals dynamically if they are mapped
+        heavyMetalsKeys.forEach(k => {
+          if (columnMapping[k]) {
+            rowDataToSubmit[k] = row[k];
+          }
         });
+
+        sheet.addRow(rowDataToSubmit);
       });
 
       // Style sheet
@@ -578,6 +666,32 @@ export default function HydrochemistryView({
                   <th className="px-4 py-3 font-bold">PI calc</th>
                   <th className="px-4 py-3 font-bold">Kelly Index</th>
                   <th className="px-4 py-3 font-bold">Mg Hazard</th>
+                  <th className="px-4 py-3 bg-emerald-50 text-emerald-800 font-bold">Total Alkalinity (Calculated)</th>
+                  <th className="px-4 py-3 bg-emerald-50 text-emerald-800 font-bold">Calculated TDS</th>
+                  {/* Piper Diagram Percentages (meq %) */}
+                  <th className="px-4 py-3 bg-indigo-50 text-indigo-800 font-bold">% Ca</th>
+                  <th className="px-4 py-3 bg-indigo-50 text-indigo-800 font-bold">% Mg</th>
+                  <th className="px-4 py-3 bg-indigo-50 text-indigo-800 font-bold">% (Na+K)</th>
+                  <th className="px-4 py-3 bg-indigo-50 text-indigo-800 font-bold">% (CO3+HCO3)</th>
+                  <th className="px-4 py-3 bg-indigo-50 text-indigo-800 font-bold">% SO4</th>
+                  <th className="px-4 py-3 bg-indigo-50 text-indigo-800 font-bold">% Cl</th>
+                  {/* Dynamic Heavy Metals */}
+                  {columnMapping["Fe"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Fe (mg/L)</th>}
+                  {columnMapping["As"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">As (mg/L)</th>}
+                  {columnMapping["U"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">U (mg/L)</th>}
+                  {columnMapping["Zn"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Zn (mg/L)</th>}
+                  {columnMapping["Cu"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Cu (mg/L)</th>}
+                  {columnMapping["Pb"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Pb (mg/L)</th>}
+                  {columnMapping["Cd"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Cd (mg/L)</th>}
+                  {columnMapping["Cr"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Cr (mg/L)</th>}
+                  {columnMapping["Hg"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Hg (mg/L)</th>}
+                  {columnMapping["Ni"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Ni (mg/L)</th>}
+                  {columnMapping["Se"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Se (mg/L)</th>}
+                  {columnMapping["Mn"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Mn (mg/L)</th>}
+                  {columnMapping["Al"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Al (mg/L)</th>}
+                  {columnMapping["Ba"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Ba (mg/L)</th>}
+                  {columnMapping["B"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">B (mg/L)</th>}
+                  {columnMapping["Mo"] && <th className="px-4 py-3 bg-rose-50 text-rose-800 font-bold">Mo (mg/L)</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -607,24 +721,24 @@ export default function HydrochemistryView({
                       <td className="px-4 py-2.5 font-bold text-slate-800 truncate max-w-[140px]" title={row[locationKey] || ""}>
                         {row[locationKey] || "Unknown Site"}
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-600">
-                        {row[latKey] ? Number(row[latKey]).toFixed(4) : "-"}
+                      <td className="px-4 py-2.5 font-mono text-slate-600 text-right tabular-nums">
+                        {row[latKey] ? formatAdvanced(row[latKey], 4) : "-"}
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-slate-600">
-                        {row[lngKey] ? Number(row[lngKey]).toFixed(4) : "-"}
+                      <td className="px-4 py-2.5 font-mono text-slate-600 text-right tabular-nums">
+                        {row[lngKey] ? formatAdvanced(row[lngKey], 4) : "-"}
                       </td>
-                      <td className="px-4 py-2.5 font-mono">
+                      <td className="px-4 py-2.5 font-mono text-right tabular-nums">
                         <span className={`px-2 py-0.5 rounded-md font-bold ${
                           Math.abs(row["Charge_Balance_Error_Pct"]) <= 5 
                             ? "bg-emerald-50 text-emerald-700 border border-emerald-100" 
                             : "bg-red-50 text-red-700 border border-red-100"
                         }`}>
-                          {row["Charge_Balance_Error_Pct"]}%
+                          {formatAdvanced(row["Charge_Balance_Error_Pct"], 3)}%
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 font-mono font-bold text-indigo-700">{row["SAR"]}</td>
-                      <td className="px-4 py-2.5 font-mono text-indigo-700">{row["RSC"]}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 font-mono font-bold text-indigo-700 text-right tabular-nums">{formatAdvanced(row["SAR"], 3)}</td>
+                      <td className="px-4 py-2.5 font-mono text-indigo-700 text-right tabular-nums">{formatAdvanced(row["RSC"], 3)}</td>
+                      <td className="px-4 py-2.5 text-center">
                         <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold border border-amber-100 font-mono">
                           {row["Ussl_Class"]}
                         </span>
@@ -632,12 +746,38 @@ export default function HydrochemistryView({
                       <td className="px-4 py-2.5 text-emerald-800 font-bold truncate max-w-[150px]" title={row["Hydrochemical_Facies"]}>
                         {row["Hydrochemical_Facies"]}
                       </td>
-                      <td className="px-4 py-2.5 font-mono">{row["Na_Na_plus_Ca_meq"]}</td>
-                      <td className="px-4 py-2.5 font-mono">{row["Cl_Cl_plus_HCO3_meq"]}</td>
-                      <td className="px-4 py-2.5 font-mono">{row["Gibbs_Log_TDS"]}</td>
-                      <td className="px-4 py-2.5 font-mono">{row["PI_calc"]}</td>
-                      <td className="px-4 py-2.5 font-mono">{row["Kelly_Index_calc"]}</td>
-                      <td className="px-4 py-2.5 font-mono">{row["Magnesium_Hazard_calc"]}%</td>
+                      <td className="px-4 py-2.5 font-mono text-right tabular-nums">{formatAdvanced(row["Na_Na_plus_Ca_meq"], 4)}</td>
+                      <td className="px-4 py-2.5 font-mono text-right tabular-nums">{formatAdvanced(row["Cl_Cl_plus_HCO3_meq"], 4)}</td>
+                      <td className="px-4 py-2.5 font-mono text-right tabular-nums">{formatAdvanced(row["Gibbs_Log_TDS"], 4)}</td>
+                      <td className="px-4 py-2.5 font-mono text-right tabular-nums">{formatAdvanced(row["PI_calc"], 2)}</td>
+                      <td className="px-4 py-2.5 font-mono text-right tabular-nums">{formatAdvanced(row["Kelly_Index_calc"], 3)}</td>
+                      <td className="px-4 py-2.5 font-mono text-right tabular-nums">{formatAdvanced(row["Magnesium_Hazard_calc"], 2)}%</td>
+                      <td className="px-4 py-2.5 font-mono font-bold text-emerald-800 bg-emerald-50/25 text-right tabular-nums">{formatAdvanced(row["Total_Alkalinity_calc"], 2)}</td>
+                      <td className="px-4 py-2.5 font-mono font-bold text-emerald-800 bg-emerald-50/25 text-right tabular-nums">{formatAdvanced(row["TDS_calc"], 2)}</td>
+                      {/* Piper percentages */}
+                      <td className="px-4 py-2.5 font-mono text-indigo-800 text-right tabular-nums">{formatAdvanced(row["pct_Ca"], 2)}%</td>
+                      <td className="px-4 py-2.5 font-mono text-indigo-800 text-right tabular-nums">{formatAdvanced(row["pct_Mg"], 2)}%</td>
+                      <td className="px-4 py-2.5 font-mono text-indigo-800 text-right tabular-nums">{formatAdvanced(row["pct_Na_plus_K"], 2)}%</td>
+                      <td className="px-4 py-2.5 font-mono text-indigo-800 text-right tabular-nums">{formatAdvanced(row["pct_HCO3_plus_CO3"], 2)}%</td>
+                      <td className="px-4 py-2.5 font-mono text-indigo-800 text-right tabular-nums">{formatAdvanced(row["pct_SO4"], 2)}%</td>
+                      <td className="px-4 py-2.5 font-mono text-indigo-800 text-right tabular-nums">{formatAdvanced(row["pct_Cl"], 2)}%</td>
+                      {/* Heavy metals values */}
+                      {columnMapping["Fe"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Fe"] !== undefined ? formatAdvanced(row["Fe"], 4) : "-"}</td>}
+                      {columnMapping["As"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["As"] !== undefined ? formatAdvanced(row["As"], 4) : "-"}</td>}
+                      {columnMapping["U"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["U"] !== undefined ? formatAdvanced(row["U"], 4) : "-"}</td>}
+                      {columnMapping["Zn"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Zn"] !== undefined ? formatAdvanced(row["Zn"], 4) : "-"}</td>}
+                      {columnMapping["Cu"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Cu"] !== undefined ? formatAdvanced(row["Cu"], 4) : "-"}</td>}
+                      {columnMapping["Pb"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Pb"] !== undefined ? formatAdvanced(row["Pb"], 4) : "-"}</td>}
+                      {columnMapping["Cd"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Cd"] !== undefined ? formatAdvanced(row["Cd"], 4) : "-"}</td>}
+                      {columnMapping["Cr"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Cr"] !== undefined ? formatAdvanced(row["Cr"], 4) : "-"}</td>}
+                      {columnMapping["Hg"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Hg"] !== undefined ? formatAdvanced(row["Hg"], 4) : "-"}</td>}
+                      {columnMapping["Ni"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Ni"] !== undefined ? formatAdvanced(row["Ni"], 4) : "-"}</td>}
+                      {columnMapping["Se"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Se"] !== undefined ? formatAdvanced(row["Se"], 4) : "-"}</td>}
+                      {columnMapping["Mn"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Mn"] !== undefined ? formatAdvanced(row["Mn"], 4) : "-"}</td>}
+                      {columnMapping["Al"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Al"] !== undefined ? formatAdvanced(row["Al"], 4) : "-"}</td>}
+                      {columnMapping["Ba"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Ba"] !== undefined ? formatAdvanced(row["Ba"], 4) : "-"}</td>}
+                      {columnMapping["B"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["B"] !== undefined ? formatAdvanced(row["B"], 4) : "-"}</td>}
+                      {columnMapping["Mo"] && <td className="px-4 py-2.5 font-mono text-rose-800 bg-rose-50/10 text-right tabular-nums">{row["Mo"] !== undefined ? formatAdvanced(row["Mo"], 4) : "-"}</td>}
                     </tr>
                   );
                 })}

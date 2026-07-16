@@ -19,6 +19,15 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
+function toProperCase(str: string): string {
+  if (!str) return "N/A";
+  if (str.toUpperCase() === "N/A") return "N/A";
+  return str
+    .trim()
+    .toLowerCase()
+    .replace(/\b([a-z])/g, (m) => m.toUpperCase());
+}
+
 interface RankingStatsViewProps {
   rawData: any[];
   headers: DataHeaders;
@@ -654,9 +663,12 @@ export default function RankingStatsView({
                           <td className="py-3.5 px-4 text-center text-slate-800 font-bold">{d.avg.toFixed(2)}</td>
                           <td className="py-3.5 px-4 text-center text-slate-500">{d.stdDev.toFixed(2)}</td>
                           <td className="py-3.5 px-4">
-                            <div className="font-bold text-slate-850">{d.max?.loc}</div>
-                            <div className="text-[10px] text-slate-450 uppercase font-bold mt-0.5">
-                              State: {d.max?.state}, Dist: {d.max?.district}, Blk: {d.max?.block}
+                            <div className="font-bold text-slate-850">{toProperCase(d.max?.loc)}</div>
+                            <div className="text-[11px] text-rose-600 font-extrabold mt-0.5">
+                              Value: {d.max?.val.toFixed(2)} {d.config.unit || ""}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-bold mt-0.5">
+                              State: {toProperCase(d.max?.state)}, Dist: {toProperCase(d.max?.district)}, Blk: {toProperCase(d.max?.block)}
                             </div>
                           </td>
                         </tr>
@@ -706,9 +718,12 @@ export default function RankingStatsView({
                             <td className="py-3.5 px-4 text-center text-slate-800 font-bold">{d.avg.toFixed(2)}</td>
                             <td className="py-3.5 px-4 text-center text-slate-500">{d.stdDev.toFixed(2)}</td>
                             <td className="py-3.5 px-4">
-                              <div className="font-bold text-slate-850">{d.max?.loc}</div>
-                              <div className="text-[10px] text-slate-450 uppercase font-bold mt-0.5">
-                                Dist: {d.max?.district}, Blk: {d.max?.block}
+                              <div className="font-bold text-slate-850">{toProperCase(d.max?.loc)}</div>
+                              <div className="text-[11px] text-rose-600 font-extrabold mt-0.5">
+                                Value: {d.max?.val.toFixed(2)} {config.unit || ""}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-bold mt-0.5">
+                                District: {toProperCase(d.max?.district)}, Blk: {toProperCase(d.max?.block)}
                               </div>
                             </td>
                           </tr>

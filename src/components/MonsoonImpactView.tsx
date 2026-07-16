@@ -14,9 +14,20 @@ import {
   Filter,
   Activity,
   AlertTriangle,
-  Award
+  Award,
+  Search,
+  AlertCircle
 } from "lucide-react";
 import * as XLSX from "xlsx";
+
+export const formatAdvanced = (value: any, decimals: number = 2): string => {
+  if (value === null || value === undefined || value === "" || isNaN(Number(value))) return "-";
+  const num = Number(value);
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+};
 
 interface MonsoonImpactViewProps {
   rawData: any[];
@@ -224,6 +235,10 @@ export default function MonsoonImpactView({
   const [localState, setLocalState] = useState("All");
   const [localDistrict, setLocalDistrict] = useState("All");
   const [localBlock, setLocalBlock] = useState("All");
+
+  // --- WELL-WISE DATA AVAILABILITY STATES ---
+  const [availWellSearch, setAvailWellSearch] = useState("");
+  const [availWellPage, setAvailWellPage] = useState(1);
 
   const effectiveAggLevel = useMemo(() => {
     if ((localDistrict && localDistrict !== "All") || globalSelectedDistrict) {
@@ -962,6 +977,99 @@ export default function MonsoonImpactView({
 
     return stats;
   }, [rawData, basePeriod, compPeriod, pairingLogic, headers, availableParams, globalSelectedState, globalSelectedDistrict, localState, localDistrict, localBlock, getParamVal]);
+
+  // --- WELL-WISE DATA AVAILABILITY DATA ---
+  const wellAvailabilityData = useMemo(() => {
+    if (!rawData.length || !headers.year || !headers.season) return [];
+
+    const locMap: Record<string, {
+      wellId: string;
+      state: string;
+      district: string;
+      block: string;
+      location: string;
+      hasBase: boolean;
+      hasComp: boolean;
+      isPaired: boolean;
+    }> = {};
+
+    let filtered = rawData;
+    if (globalSelectedState) {
+      filtered = filtered.filter(row => String(row[headers.state || ""] || "").trim() === globalSelectedState);
+    }
+    if (globalSelectedDistrict) {
+      filtered = filtered.filter(row => String(row[headers.district || ""] || "").trim() === globalSelectedDistrict);
+    }
+    if (localState !== "All") {
+      filtered = filtered.filter(row => String(row[headers.state || ""] || "").trim() === localState);
+    }
+    if (localDistrict !== "All") {
+      filtered = filtered.filter(row => String(row[headers.district || ""] || "").trim() === localDistrict);
+    }
+    if (localBlock !== "All") {
+      filtered = filtered.filter(row => String(row[headers.block || ""] || "").trim() === localBlock);
+    }
+
+    filtered.forEach(row => {
+      const y = headers.year ? String(row[headers.year] || "").trim() : "";
+      const s = headers.season ? String(row[headers.season] || "").trim() : "";
+      const period = (y && s) ? `${y} | ${s}` : (y || s);
+
+      let key = "";
+      let wellId = "Unknown";
+      
+      if (headers.wellId && row[headers.wellId]) {
+        wellId = String(row[headers.wellId]).trim();
+        key = wellId.toUpperCase();
+      } else {
+        const stateVal = String(row[headers.state || "State"] || "").trim();
+        const distVal = String(row[headers.district || "District"] || "").trim();
+        const blockVal = String(row[headers.block || "Block"] || "").trim();
+        const locVal = String(row[headers.location || "Location"] || "").trim();
+        key = `${stateVal}|${distVal}|${blockVal}|${locVal}`.toUpperCase();
+      }
+
+      if (!key) return;
+
+      if (!locMap[key]) {
+        locMap[key] = {
+          wellId: headers.wellId ? String(row[headers.wellId] || "Unknown").trim() : "Unknown",
+          state: String(row[headers.state || "State"] || "Unknown").trim(),
+          district: String(row[headers.district || "District"] || "Unknown").trim(),
+          block: String(row[headers.block || "Block"] || "Unknown").trim(),
+          location: String(row[headers.location || "Location"] || "Unknown").trim(),
+          hasBase: false,
+          hasComp: false,
+          isPaired: false
+        };
+      }
+
+      if (period === basePeriod) locMap[key].hasBase = true;
+      if (period === compPeriod) locMap[key].hasComp = true;
+    });
+
+    Object.values(locMap).forEach(item => {
+      item.isPaired = item.hasBase && item.hasComp;
+    });
+
+    return Object.values(locMap);
+  }, [rawData, basePeriod, compPeriod, headers, globalSelectedState, globalSelectedDistrict, localState, localDistrict, localBlock]);
+
+  const filteredWellAvailability = useMemo(() => {
+    if (!availWellSearch) return wellAvailabilityData;
+    const term = availWellSearch.toLowerCase();
+    return wellAvailabilityData.filter(w =>
+      w.wellId.toLowerCase().includes(term) ||
+      w.location.toLowerCase().includes(term) ||
+      w.district.toLowerCase().includes(term) ||
+      w.block.toLowerCase().includes(term)
+    );
+  }, [wellAvailabilityData, availWellSearch]);
+
+  const paginatedWellAvailability = useMemo(() => {
+    const start = (availWellPage - 1) * 10;
+    return filteredWellAvailability.slice(start, start + 10);
+  }, [filteredWellAvailability, availWellPage]);
 
   // --- DETAILED MATRIX DISPLAY ---
   const detailedMatrixData = useMemo(() => {
@@ -2105,15 +2213,149 @@ export default function MonsoonImpactView({
                       <tr key={p} className="hover:bg-slate-50 transition-colors">
                         <td className="p-3 text-center text-slate-400">{idx + 1}</td>
                         <td className="p-3 text-blue-600 font-black">{p} ({getParamConfig(p)?.name || p})</td>
-                        <td className="p-3 text-center font-mono">{s.total}</td>
-                        <td className="p-3 text-center font-mono text-amber-600">{s.baseValid}</td>
-                        <td className="p-3 text-center font-mono text-blue-600">{s.compValid}</td>
-                        <td className="p-3 text-center font-mono text-emerald-600 bg-emerald-50/10 font-extrabold">{s.pairedValid}</td>
+                        <td className="p-3 text-center font-mono tabular-nums">{formatAdvanced(s.total, 0)}</td>
+                        <td className="p-3 text-center font-mono text-amber-600 tabular-nums">{formatAdvanced(s.baseValid, 0)}</td>
+                        <td className="p-3 text-center font-mono text-blue-600 tabular-nums">{formatAdvanced(s.compValid, 0)}</td>
+                        <td className="p-3 text-center font-mono text-emerald-600 bg-emerald-50/10 font-extrabold tabular-nums">{formatAdvanced(s.pairedValid, 0)}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Well-Wise Data Availability Details */}
+            <div className="border-t border-slate-200 pt-6 mt-6 space-y-4">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800">
+                    Well-Wise Data Availability Details
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-bold">
+                    Inspect individual well availability across selected periods. Only well locations with matching records in both periods are paired for calculations.
+                  </p>
+                </div>
+                
+                {/* Search Well ID */}
+                <div className="relative w-full md:w-64 shrink-0">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search Well ID, Location..."
+                    value={availWellSearch}
+                    onChange={(e) => {
+                      setAvailWellSearch(e.target.value);
+                      setAvailWellPage(1);
+                    }}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:border-emerald-500 transition-all font-bold placeholder:font-normal"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 overflow-hidden shadow-inner">
+                <table className="w-full border-collapse text-left text-xs bg-white">
+                  <thead className="bg-slate-100 text-slate-700 font-black uppercase text-[10px] tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="p-3 text-center">S.No.</th>
+                      <th className="p-3">Well ID</th>
+                      <th className="p-3">State</th>
+                      <th className="p-3">District</th>
+                      <th className="p-3">Block</th>
+                      <th className="p-3">Location Name</th>
+                      <th className="p-3 text-center text-amber-600">Base Period Status ({basePeriod || "Base"})</th>
+                      <th className="p-3 text-center text-blue-600">Compare Period Status ({compPeriod || "Compare"})</th>
+                      <th className="p-3 text-center">Pairing Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-bold text-slate-700">
+                    {filteredWellAvailability.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="p-8 text-center text-slate-400 font-extrabold uppercase text-[10px]">
+                          No wells found matching search or filter criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedWellAvailability.map((row, idx) => {
+                        const serialNum = (availWellPage - 1) * 10 + idx + 1;
+                        return (
+                          <tr key={row.wellId + "-" + idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3 text-center text-slate-400 font-mono">{serialNum}</td>
+                            <td className="p-3 text-blue-600 font-black truncate max-w-[120px]" title={row.wellId}>
+                              {row.wellId}
+                            </td>
+                            <td className="p-3 text-slate-600 truncate max-w-[100px]" title={row.state}>{row.state}</td>
+                            <td className="p-3 text-slate-600 truncate max-w-[100px]" title={row.district}>{row.district}</td>
+                            <td className="p-3 text-slate-600 truncate max-w-[100px]" title={row.block}>{row.block}</td>
+                            <td className="p-3 text-slate-800 truncate max-w-[130px]" title={row.location}>{row.location}</td>
+                            
+                            {/* Base available */}
+                            <td className="p-3 text-center">
+                              {row.hasBase ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 uppercase font-black">
+                                  <CheckCircle className="w-3 h-3" /> Available
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100 uppercase font-black">
+                                  <AlertCircle className="w-3 h-3" /> Missing
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Compare available */}
+                            <td className="p-3 text-center">
+                              {row.hasComp ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 uppercase font-black">
+                                  <CheckCircle className="w-3 h-3" /> Available
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100 uppercase font-black">
+                                  <AlertCircle className="w-3 h-3" /> Missing
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Pairing status */}
+                            <td className="p-3 text-center">
+                              {row.isPaired ? (
+                                <span className="inline-flex text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-black uppercase shadow-xs">
+                                  SUCCESSFULLY PAIRED
+                                </span>
+                              ) : (
+                                <span className="inline-flex text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-black uppercase shadow-xs">
+                                  UNPAIRED (EXCLUDED)
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Well Pagination */}
+              {filteredWellAvailability.length > 10 && (
+                <div className="flex justify-between items-center pt-2">
+                  <button
+                    disabled={availWellPage === 1}
+                    onClick={() => setAvailWellPage(prev => Math.max(prev - 1, 1))}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-bold bg-white text-slate-700 disabled:opacity-50 cursor-pointer hover:bg-slate-50 transition-all select-none"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs font-extrabold text-slate-500">
+                    Showing {Math.min(filteredWellAvailability.length, (availWellPage - 1) * 10 + 1)}-{Math.min(filteredWellAvailability.length, availWellPage * 10)} of {filteredWellAvailability.length} Wells
+                  </span>
+                  <button
+                    disabled={availWellPage * 10 >= filteredWellAvailability.length}
+                    onClick={() => setAvailWellPage(prev => Math.min(prev + 1, Math.ceil(filteredWellAvailability.length / 10)))}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-bold bg-white text-slate-700 disabled:opacity-50 cursor-pointer hover:bg-slate-50 transition-all select-none"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2188,12 +2430,12 @@ export default function MonsoonImpactView({
                           else if (val.status === "Deteriorated") badgeColor = "bg-rose-600 text-white shadow-sm";
 
                           return [
-                            <td key={`${p}-b`} className="p-3 text-center font-mono text-slate-600 border-l border-slate-250 bg-slate-50/20">{val.base}</td>,
-                            <td key={`${p}-c`} className="p-3 text-center font-mono text-slate-700 bg-slate-50/20">{val.comp}</td>,
-                            <td key={`${p}-p`} className={`p-3 text-center font-mono text-xs font-extrabold ${
+                            <td key={`${p}-b`} className="p-3 text-right font-mono text-slate-600 border-l border-slate-250 bg-slate-50/20 tabular-nums">{formatAdvanced(val.base, p === "pH" || p === "SAR" || p === "RSC" ? 2 : 1)}</td>,
+                            <td key={`${p}-c`} className="p-3 text-right font-mono text-slate-700 bg-slate-50/20 tabular-nums">{formatAdvanced(val.comp, p === "pH" || p === "SAR" || p === "RSC" ? 2 : 1)}</td>,
+                            <td key={`${p}-p`} className={`p-3 text-right font-mono text-xs font-extrabold tabular-nums ${
                               val.pctChange < -20 ? "text-emerald-600" : val.pctChange > 20 ? "text-rose-600" : "text-slate-500"
                             }`}>
-                              {(val.pctChange > 0 ? "+" : "") + val.pctChange.toFixed(1)}%
+                              {(val.pctChange > 0 ? "+" : "") + formatAdvanced(val.pctChange, 1)}%
                             </td>,
                             <td key={`${p}-s`} className="p-3 text-center border-r border-slate-250">
                               <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${badgeColor}`}>

@@ -864,6 +864,9 @@ export default function GisMapView({
   const [shapeFillOpacity, setShapeFillOpacity] = useState<number>(15);
   const [showShapefile, setShowShapefile] = useState<boolean>(true);
   const [showShapefileInLegend, setShowShapefileInLegend] = useState<boolean>(true);
+  const [shapefileLegendColumns, setShapefileLegendColumns] = useState<number>(1);
+  const [shapefileLegendFontStyle, setShapefileLegendFontStyle] = useState<string>("normal");
+  const [shapefileLegendSpacing, setShapefileLegendSpacing] = useState<number>(15);
   const [legendColumns, setLegendColumns] = useState<number>(1);
   const [shapefileLegendFontSize, setShapefileLegendFontSize] = useState<number>(7.5);
   const [shapefileLegendTextColor, setShapefileLegendTextColor] = useState<string>("#475569");
@@ -1275,26 +1278,25 @@ export default function GisMapView({
     // 4. Check click on Legend
     let legendWidthVal = 155;
     const visibleLayersForLeg = layers.filter(l => l.visible);
-    let extraBoundaryHeight = 0;
-    if (showShapefile) {
+    let shapefileItemCount = 0;
+    if (showShapefile && showShapefileInLegend) {
       if (visibleLayersForLeg.length > 0) {
-        const hasColorMappings = visibleLayersForLeg.some(l => l.colorAttribute && l.colorMapping && Object.keys(l.colorMapping).length > 0);
-        if (hasColorMappings) {
-          legendWidthVal = 195;
-        }
         visibleLayersForLeg.forEach(layer => {
+          if (layer.showInLegend === false) return;
           if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
-            extraBoundaryHeight += Object.keys(layer.colorMapping).length * 15;
+            shapefileItemCount += Object.keys(layer.colorMapping).length;
           } else {
-            extraBoundaryHeight += 15;
+            shapefileItemCount += 1;
           }
         });
       } else if (uploadedGeoJson) {
-        const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
-        if (label) {
-          extraBoundaryHeight = 15;
-        }
+        shapefileItemCount += 1;
       }
+    }
+    const numShapefileRows = Math.ceil(shapefileItemCount / shapefileLegendColumns);
+    const extraBoundaryHeight = numShapefileRows * shapefileLegendSpacing;
+    if (showShapefile && showShapefileInLegend && shapefileLegendColumns > 1 && legendWidthVal < 240) {
+      legendWidthVal = 240;
     }
     const legendHeight = (95 + extraBoundaryHeight) * dpr;
     const legendWidth = legendWidthVal * dpr;
@@ -1590,6 +1592,13 @@ export default function GisMapView({
 
   // Only Transparent Legend/Title/Stats toggle (defaults to true as requested)
   const [onlyTransparentPanels, setOnlyTransparentPanels] = useState<boolean>(true);
+
+  // Map Border customization
+  const [mapBorderType, setMapBorderType] = useState<"single" | "double">("double");
+  const [mapBorderColor, setMapBorderColor] = useState<string>("#1e293b");
+
+  // Shapefile legend font family
+  const [shapefileLegendFontFamily, setShapefileLegendFontFamily] = useState<string>("Times New Roman");
 
   // Facility to extend interpolation to full shapefile boundary when points are missing
   const [extendInterpolationToBoundary, setExtendInterpolationToBoundary] = useState<boolean>(false);
@@ -2327,7 +2336,8 @@ export default function GisMapView({
     isDifference: boolean = false,
     diffMatrix: number[][] | null = null,
     panelId?: "left" | "right",
-    paramOverride?: string
+    paramOverride?: string,
+    noBorder: boolean = false
   ) => {
     // Standard GIS margins suitable for Map neatline sheets
     const margin = 55 * scale;
@@ -2803,11 +2813,13 @@ export default function GisMapView({
     }
 
     // 4. Neatline double-border frames (Professional publication standard)
-    ctx.strokeStyle = "#1e293b";
-    ctx.lineWidth = 1.5 * scale;
-    ctx.strokeRect(margin, margin, mw, mh); // Inner frame
-    if (showGrid) {
-      ctx.strokeRect(margin - 6 * scale, margin - 6 * scale, mw + 12 * scale, mh + 12 * scale); // Outer tick frame
+    if (!noBorder) {
+      ctx.strokeStyle = mapBorderColor;
+      ctx.lineWidth = 1.5 * scale;
+      ctx.strokeRect(margin, margin, mw, mh); // Inner frame
+      if (mapBorderType === "double" || (mapBorderType === undefined && showGrid)) {
+        ctx.strokeRect(margin - 6 * scale, margin - 6 * scale, mw + 12 * scale, mh + 12 * scale); // Outer tick frame
+      }
     }
 
     // 5b. Render Custom Shapefile / GeoJSON Boundaries (Drawn above base layers but below points)
@@ -3262,27 +3274,56 @@ export default function GisMapView({
     }
     let legendWidthVal = legendWidth;
     const visibleLayers = layers.filter(l => l.visible);
-    let extraBoundaryHeight = 0;
+
+    const shapefileLegendItems: { color: string; label: string; fillOpacity: number; showStroke: boolean; strokeColor: string; strokeWidth: number }[] = [];
     if (showShapefile && showShapefileInLegend) {
       if (visibleLayers.length > 0) {
-        const hasColorMappings = visibleLayers.some(l => l.colorAttribute && l.colorMapping && Object.keys(l.colorMapping).length > 0);
-        if (hasColorMappings && legendWidthVal < 195) {
-          legendWidthVal = 195;
-        }
-        visibleLayers.forEach(layer => {
+        visibleLayers.forEach((layer) => {
           if (layer.showInLegend === false) return;
           if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
-            extraBoundaryHeight += Object.keys(layer.colorMapping).length * 15;
+            Object.keys(layer.colorMapping).forEach((attrValue) => {
+              shapefileLegendItems.push({
+                color: layer.colorMapping[attrValue],
+                label: attrValue,
+                fillOpacity: layer.fillOpacity || 15,
+                showStroke: layer.showStroke !== false,
+                strokeColor: layer.strokeColor,
+                strokeWidth: layer.strokeWidth || 2.0,
+              });
+            });
           } else {
-            extraBoundaryHeight += 15;
+            const label = getBoundaryLegendLabel(layer.geoJson) || layer.name;
+            shapefileLegendItems.push({
+              color: layer.fillColor,
+              label: label,
+              fillOpacity: layer.fillOpacity || 15,
+              showStroke: layer.showStroke !== false,
+              strokeColor: layer.strokeColor,
+              strokeWidth: layer.strokeWidth || 2.0,
+            });
           }
         });
       } else if (uploadedGeoJson) {
         const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
-        if (label) {
-          extraBoundaryHeight = 15;
-        }
+        shapefileLegendItems.push({
+          color: shapeFillColor,
+          label: label,
+          fillOpacity: shapeFillOpacity || 15,
+          showStroke: showGlobalShapefileOutline,
+          strokeColor: shapeStrokeColor,
+          strokeWidth: shapeStrokeWidth || 2.0,
+        });
       }
+    }
+
+    let extraBoundaryHeight = 0;
+    if (showShapefile && showShapefileInLegend && shapefileLegendItems.length > 0) {
+      const numShapefileRows = Math.ceil(shapefileLegendItems.length / shapefileLegendColumns);
+      extraBoundaryHeight = numShapefileRows * shapefileLegendSpacing;
+    }
+
+    if (showShapefile && showShapefileInLegend && shapefileLegendColumns > 1 && legendWidthVal < 240) {
+      legendWidthVal = 240;
     }
     const legendWidthFinal = legendWidthVal;
 
@@ -3440,88 +3481,44 @@ export default function GisMapView({
       }
     }
 
-    if (showShapefile && showShapefileInLegend) {
-      let currentY = 32 + numClassRows * legendRowSpacing;
-      if (visibleLayers.length > 0) {
-        visibleLayers.forEach((layer) => {
-          if (layer.showInLegend === false) return;
-          if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
-            Object.keys(layer.colorMapping).forEach((attrValue) => {
-              const color = layer.colorMapping[attrValue];
-              
-              // Draw fill with custom attribute color
-              ctx.save();
-              ctx.fillStyle = color;
-              ctx.globalAlpha = (layer.fillOpacity || 15) / 100;
-              ctx.fillRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
-              ctx.restore();
+    if (showShapefile && showShapefileInLegend && shapefileLegendItems.length > 0) {
+      let startY = 32 + numClassRows * legendRowSpacing;
+      
+      // Determine Font Style
+      let fontStyleStr = "";
+      if (shapefileLegendFontStyle === "bold") fontStyleStr = "bold ";
+      else if (shapefileLegendFontStyle === "italic") fontStyleStr = "italic ";
+      else if (shapefileLegendFontStyle === "bold-italic") fontStyleStr = "bold italic ";
+      
+      const shapefileColWidth = (legendWidthFinal - 16) / shapefileLegendColumns;
 
-              // Draw stroke with layer's stroke color
-              if (layer.showStroke !== false) {
-                ctx.save();
-                ctx.strokeStyle = layer.strokeColor;
-                ctx.lineWidth = Math.max(1, (layer.strokeWidth || 2.0) * 0.5) * scale;
-                ctx.strokeRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
-                ctx.restore();
-              }
+      shapefileLegendItems.forEach((item, i) => {
+        const colIndex = i % shapefileLegendColumns;
+        const rowIndex = Math.floor(i / shapefileLegendColumns);
+        const itemX = legX + (10 + colIndex * shapefileColWidth) * scale;
+        const itemY = legY + (startY + rowIndex * shapefileLegendSpacing) * scale;
 
-              // Draw label text with customizable size/color
-              ctx.fillStyle = shapefileLegendTextColor;
-              ctx.font = `${shapefileLegendFontSize * scale}px ${mapFontFamily}`;
-              ctx.fillText(attrValue, legX + (10 + legendBoxWidth + 6) * scale, legY + (currentY + legendBoxHeight - 0.5) * scale);
-
-              currentY += 15; // standard spacing for sub-legend attribute items
-            });
-          } else {
-            const label = getBoundaryLegendLabel(layer.geoJson) || layer.name;
-            
-            // Draw fill
-            ctx.save();
-            ctx.fillStyle = layer.fillColor;
-            ctx.globalAlpha = (layer.fillOpacity || 15) / 100;
-            ctx.fillRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
-            ctx.restore();
-
-            // Draw stroke
-            if (layer.showStroke !== false) {
-              ctx.save();
-              ctx.strokeStyle = layer.strokeColor;
-              ctx.lineWidth = Math.max(1, (layer.strokeWidth || 2.0) * 0.5) * scale;
-              ctx.strokeRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
-              ctx.restore();
-            }
-
-            // Draw label text with customizable size/color
-            ctx.fillStyle = shapefileLegendTextColor;
-            ctx.font = `${shapefileLegendFontSize * scale}px ${mapFontFamily}`;
-            ctx.fillText(label, legX + (10 + legendBoxWidth + 6) * scale, legY + (currentY + legendBoxHeight - 0.5) * scale);
-
-            currentY += legendRowSpacing;
-          }
-        });
-      } else if (uploadedGeoJson) {
-        const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
         // Draw fill
         ctx.save();
-        ctx.fillStyle = shapeFillColor;
-        ctx.globalAlpha = (shapeFillOpacity || 15) / 100;
-        ctx.fillRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+        ctx.fillStyle = item.color;
+        ctx.globalAlpha = item.fillOpacity / 100;
+        ctx.fillRect(itemX, itemY, legendBoxWidth * scale, legendBoxHeight * scale);
         ctx.restore();
 
         // Draw stroke
-        if (showGlobalShapefileOutline !== false) {
+        if (item.showStroke) {
           ctx.save();
-          ctx.strokeStyle = shapeStrokeColor;
-          ctx.lineWidth = Math.max(1, (shapeStrokeWidth || 2.0) * 0.5) * scale;
-          ctx.strokeRect(legX + 10 * scale, legY + currentY * scale, legendBoxWidth * scale, legendBoxHeight * scale);
+          ctx.strokeStyle = item.strokeColor;
+          ctx.lineWidth = Math.max(1, item.strokeWidth * 0.5) * scale;
+          ctx.strokeRect(itemX, itemY, legendBoxWidth * scale, legendBoxHeight * scale);
           ctx.restore();
         }
 
-        // Draw label text with customizable size/color
+        // Draw text
         ctx.fillStyle = shapefileLegendTextColor;
-        ctx.font = `${shapefileLegendFontSize * scale}px ${mapFontFamily}`;
-        ctx.fillText(label, legX + (10 + legendBoxWidth + 6) * scale, legY + (currentY + legendBoxHeight - 0.5) * scale);
-      }
+        ctx.font = `${fontStyleStr}${shapefileLegendFontSize * scale}px ${shapefileLegendFontFamily}`;
+        ctx.fillText(item.label, itemX + (legendBoxWidth + 6) * scale, itemY + (legendBoxHeight - 0.5) * scale);
+      });
     }
 
     if (!isStations) {
@@ -4474,27 +4471,56 @@ export default function GisMapView({
 
     let legendWidthVal = legendWidth;
     const visibleLayers = layers.filter(l => l.visible);
-    let extraBoundaryHeight = 0;
+
+    const shapefileLegendItems: { color: string; label: string; fillOpacity: number; showStroke: boolean; strokeColor: string; strokeWidth: number }[] = [];
     if (showShapefile && showShapefileInLegend) {
       if (visibleLayers.length > 0) {
-        const hasColorMappings = visibleLayers.some(l => l.colorAttribute && l.colorMapping && Object.keys(l.colorMapping).length > 0);
-        if (hasColorMappings && legendWidthVal < 195) {
-          legendWidthVal = 195;
-        }
-        visibleLayers.forEach(layer => {
+        visibleLayers.forEach((layer) => {
           if (layer.showInLegend === false) return;
           if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
-            extraBoundaryHeight += Object.keys(layer.colorMapping).length * 15;
+            Object.keys(layer.colorMapping).forEach((attrValue) => {
+              shapefileLegendItems.push({
+                color: layer.colorMapping[attrValue],
+                label: attrValue,
+                fillOpacity: layer.fillOpacity || 15,
+                showStroke: layer.showStroke !== false,
+                strokeColor: layer.strokeColor,
+                strokeWidth: layer.strokeWidth || 2.0,
+              });
+            });
           } else {
-            extraBoundaryHeight += 15;
+            const label = getBoundaryLegendLabel(layer.geoJson) || layer.name;
+            shapefileLegendItems.push({
+              color: layer.fillColor,
+              label: label,
+              fillOpacity: layer.fillOpacity || 15,
+              showStroke: layer.showStroke !== false,
+              strokeColor: layer.strokeColor,
+              strokeWidth: layer.strokeWidth || 2.0,
+            });
           }
         });
       } else if (uploadedGeoJson) {
         const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
-        if (label) {
-          extraBoundaryHeight = 15;
-        }
+        shapefileLegendItems.push({
+          color: shapeFillColor,
+          label: label,
+          fillOpacity: shapeFillOpacity || 15,
+          showStroke: showGlobalShapefileOutline,
+          strokeColor: shapeStrokeColor,
+          strokeWidth: shapeStrokeWidth || 2.0,
+        });
       }
+    }
+
+    let extraBoundaryHeight = 0;
+    if (showShapefile && showShapefileInLegend && shapefileLegendItems.length > 0) {
+      const numShapefileRows = Math.ceil(shapefileLegendItems.length / shapefileLegendColumns);
+      extraBoundaryHeight = numShapefileRows * shapefileLegendSpacing;
+    }
+
+    if (showShapefile && showShapefileInLegend && shapefileLegendColumns > 1 && legendWidthVal < 240) {
+      legendWidthVal = 240;
     }
     const legendWidthFinal = legendWidthVal;
 
@@ -4579,36 +4605,27 @@ export default function GisMapView({
       }
     }
 
-    if (showShapefile && showShapefileInLegend) {
-      let currentY = 32 + numClassRows * legendRowSpacing;
-      if (visibleLayers.length > 0) {
-        visibleLayers.forEach((layer) => {
-          if (layer.showInLegend === false) return;
-          if (layer.colorAttribute && layer.colorMapping && Object.keys(layer.colorMapping).length > 0) {
-            Object.keys(layer.colorMapping).forEach((attrValue) => {
-              const color = layer.colorMapping[attrValue];
-              legendItems += `
-                <rect x="${legX + 10}" y="${legY + currentY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${color}" fill-opacity="${(layer.fillOpacity || 15) / 100}" stroke="${layer.showStroke !== false ? layer.strokeColor : 'none'}" stroke-width="${layer.showStroke !== false ? Math.max(1, (layer.strokeWidth || 2.0) * 0.5) : 0}" />
-                <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + currentY + legendBoxHeight - 0.5}" font-size="${shapefileLegendFontSize}" fill="${shapefileLegendTextColor}">${attrValue}</text>
-              `;
-              currentY += 15;
-            });
-          } else {
-            const label = getBoundaryLegendLabel(layer.geoJson) || layer.name;
-            legendItems += `
-              <rect x="${legX + 10}" y="${legY + currentY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${layer.fillColor}" fill-opacity="${(layer.fillOpacity || 15) / 100}" stroke="${layer.showStroke !== false ? layer.strokeColor : 'none'}" stroke-width="${layer.showStroke !== false ? Math.max(1, (layer.strokeWidth || 2.0) * 0.5) : 0}" />
-              <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + currentY + legendBoxHeight - 0.5}" font-size="${shapefileLegendFontSize}" fill="${shapefileLegendTextColor}">${label}</text>
-            `;
-            currentY += legendRowSpacing;
-          }
-        });
-      } else if (uploadedGeoJson) {
-        const label = getBoundaryLegendLabel(uploadedGeoJson) || "Boundary";
+    if (showShapefile && showShapefileInLegend && shapefileLegendItems.length > 0) {
+      let startY = 32 + numClassRows * legendRowSpacing;
+      
+      let fontStyleStr = "";
+      if (shapefileLegendFontStyle === "bold") fontStyleStr = ' font-weight="bold"';
+      else if (shapefileLegendFontStyle === "italic") fontStyleStr = ' font-style="italic"';
+      else if (shapefileLegendFontStyle === "bold-italic") fontStyleStr = ' font-weight="bold" font-style="italic"';
+
+      const shapefileColWidth = (legendWidthFinal - 16) / shapefileLegendColumns;
+
+      shapefileLegendItems.forEach((item, i) => {
+        const colIndex = i % shapefileLegendColumns;
+        const rowIndex = Math.floor(i / shapefileLegendColumns);
+        const itemX = legX + (10 + colIndex * shapefileColWidth);
+        const itemY = legY + (startY + rowIndex * shapefileLegendSpacing);
+
         legendItems += `
-          <rect x="${legX + 10}" y="${legY + currentY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${shapeFillColor}" fill-opacity="${(shapeFillOpacity || 15) / 100}" stroke="${showGlobalShapefileOutline ? shapeStrokeColor : 'none'}" stroke-width="${showGlobalShapefileOutline ? Math.max(1, (shapeStrokeWidth || 2.0) * 0.5) : 0}" />
-          <text x="${legX + 10 + legendBoxWidth + 6}" y="${legY + currentY + legendBoxHeight - 0.5}" font-size="${shapefileLegendFontSize}" fill="${shapefileLegendTextColor}">${label}</text>
+          <rect x="${itemX}" y="${itemY}" width="${legendBoxWidth}" height="${legendBoxHeight}" fill="${item.color}" fill-opacity="${item.fillOpacity / 100}" stroke="${item.showStroke ? item.strokeColor : 'none'}" stroke-width="${item.showStroke ? Math.max(1, item.strokeWidth * 0.5) : 0}" />
+          <text x="${itemX + legendBoxWidth + 6}" y="${itemY + legendBoxHeight - 0.5}" font-size="${shapefileLegendFontSize}" font-family="${shapefileLegendFontFamily}" fill="${shapefileLegendTextColor}"${fontStyleStr}>${item.label}</text>
         `;
-      }
+      });
     }
 
     let scaleBarElement = "";
@@ -4793,8 +4810,8 @@ ${svgShapefileBoundaries}  </g>
 ${pointElements}  </g>
 
   <!-- 5. Outer Neatline Borders (double-border frame) -->
-  <rect x="${margin - 6}" y="${margin - 6}" width="${mw + 12}" height="${mh + 12}" fill="none" stroke="#1e293b" stroke-width="1.5" />
-  <rect x="${margin}" y="${margin}" width="${mw}" height="${mh}" fill="none" stroke="#1e293b" stroke-width="1.5" />
+  ${mapBorderType === "double" ? `<rect x="${margin - 6}" y="${margin - 6}" width="${mw + 12}" height="${mh + 12}" fill="none" stroke="${mapBorderColor}" stroke-width="1.5" />` : ""}
+  <rect x="${margin}" y="${margin}" width="${mw}" height="${mh}" fill="none" stroke="${mapBorderColor}" stroke-width="1.5" />
 
   <!-- 6. Compact Positionable Legend -->
   <g id="map-legend">
@@ -5071,7 +5088,9 @@ ${svgStatsPanel}
         isComparisonActive ? leftStats : (leftStats || rightStats),
         false,
         null,
-        "left"
+        "left",
+        undefined,
+        true
       );
 
       const highResUrl = tempCanvas.toDataURL("image/png");
@@ -5150,7 +5169,8 @@ ${svgStatsPanel}
           false,
           null,
           "left",
-          param // Pass param override!
+          param, // Pass param override!
+          true
         );
 
         const highResUrl = tempCanvas.toDataURL("image/png");
@@ -5264,8 +5284,7 @@ ${svgStatsPanel}
               { id: "shapefile", label: "Shapefile/GeoJSON", icon: Upload },
               { id: "interpolation", label: "Interpolate", icon: Sliders },
               { id: "styling", label: "Styling", icon: SlidersHorizontal },
-              { id: "decorations", label: "Elements", icon: Compass },
-              { id: "batch", label: "Batch", icon: FolderKanban }
+              { id: "decorations", label: "Elements", icon: Compass }
             ].map(tab => {
               const Icon = tab.icon;
               return (
@@ -5349,6 +5368,120 @@ ${svgStatsPanel}
                       />
                     </label>
                   </div>
+                </div>
+
+                {/* Uploaded Shapefile Layers with tick and untick facility */}
+                <div className="bg-white/40 backdrop-blur-md p-4 rounded-3xl border border-white/50 shadow-sm flex flex-col gap-3">
+                  <span className="text-xs font-extrabold text-slate-800 tracking-wide uppercase text-[10px] flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                      Uploaded Shapefiles (Layers)
+                    </span>
+                    {layers.length > 0 && (
+                      <span className="bg-indigo-100 text-indigo-800 text-[9px] px-2 py-0.5 rounded-full font-bold">
+                        {layers.length} {layers.length === 1 ? 'layer' : 'layers'}
+                      </span>
+                    )}
+                  </span>
+
+                  {layers.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-5 bg-white/50 rounded-2xl border border-dashed border-slate-200 text-center">
+                      <Layers className="w-7 h-7 text-slate-300 mb-1.5" />
+                      <p className="text-[11px] text-slate-400 font-medium">No custom shapefiles uploaded yet</p>
+                      <button
+                        onClick={() => setActiveTab("shapefile")}
+                        className="mt-2.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer"
+                      >
+                        Upload Shapefile
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <label className="flex items-center justify-between cursor-pointer p-2 rounded-xl bg-white/60 hover:bg-white transition-all border border-slate-100 shadow-sm group">
+                        <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-indigo-500" />
+                          Master Boundaries Layer Toggle
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={showShapefile}
+                          onChange={(e) => setShowShapefile(e.target.checked)}
+                          className="cursor-pointer h-4 w-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
+                        />
+                      </label>
+
+                      <div className="border-t border-slate-100 my-0.5"></div>
+
+                      {layers.map((layer) => (
+                        <div
+                          key={layer.id}
+                          className={`flex items-center justify-between p-2 rounded-xl transition-all border shadow-sm ${
+                            layer.visible
+                              ? "bg-indigo-50/25 border-indigo-100/40 hover:bg-indigo-50/45"
+                              : "bg-slate-50/50 border-slate-100/50 hover:bg-slate-50 opacity-70"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {/* Color preview indicator */}
+                            <div
+                              className="w-2.5 h-2.5 rounded-md border shadow-sm shrink-0"
+                              style={{
+                                backgroundColor: layer.fillColor || "#cbd5e1",
+                                borderColor: layer.strokeColor || "#94a3b8",
+                                borderWidth: "1px",
+                              }}
+                            />
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-bold text-slate-700 truncate">
+                                {layer.name}
+                              </span>
+                              <span className="text-[9px] font-semibold text-slate-400">
+                                {layer.geoJson?.features?.length || 0} features
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLayers(prev =>
+                                  prev.map(l =>
+                                    l.id === layer.id ? { ...l, visible: !l.visible } : l
+                                  )
+                                );
+                              }}
+                              title={layer.visible ? "Hide Layer" : "Show Layer"}
+                              className={`p-1 rounded-lg cursor-pointer transition-colors ${
+                                layer.visible
+                                  ? "text-indigo-600 hover:bg-indigo-100/50"
+                                  : "text-slate-400 hover:bg-slate-200"
+                              }`}
+                            >
+                              {layer.visible ? (
+                                <Eye className="w-3.5 h-3.5" />
+                              ) : (
+                                <EyeOff className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            
+                            <input
+                              type="checkbox"
+                              checked={layer.visible}
+                              onChange={() => {
+                                setLayers(prev =>
+                                  prev.map(l =>
+                                    l.id === layer.id ? { ...l, visible: !l.visible } : l
+                                  )
+                                );
+                              }}
+                              className="cursor-pointer h-3.5 w-3.5 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-white/40 backdrop-blur-md p-4 rounded-3xl border border-white/50 shadow-sm flex flex-col gap-3.5">
@@ -6226,24 +6359,7 @@ ${svgStatsPanel}
                   </div>
                 )}
 
-                {/* Map Panel Transparent Glass Overlays Style */}
-                <div className="border-t border-slate-100 pt-3 flex flex-col gap-2.5">
-                  <span className="text-xs font-bold text-slate-800">Header/Legend Transparency Style</span>
-                  <div>
-                    <label className="block text-[10px] text-slate-500 font-bold mb-1">BACKGROUND CLASS</label>
-                    <select
-                      value={panelBackgroundStyle}
-                      onChange={(e) => setPanelBackgroundStyle(e.target.value as any)}
-                      className="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-2 focus:outline-none"
-                    >
-                      <option value="translucent-light">Translucent Light (Aero theme)</option>
-                      <option value="translucent-dark">Translucent Charcoal (Tactical theme)</option>
-                      <option value="transparent-glass">Vitreous Glass (High Transparency)</option>
-                      <option value="solid-light">Solid High-Contrast Light</option>
-                      <option value="solid-dark">Solid High-Contrast Dark</option>
-                    </select>
-                  </div>
-                </div>
+
               </div>
             )}
 
@@ -7339,25 +7455,12 @@ ${svgStatsPanel}
                   </div>
                 </div>
 
-                {/* Transparency, Font & Dimensions */}
+                {/* Typography Settings */}
                 <div className="bg-white/40 backdrop-blur-md p-4 rounded-3xl border border-white/50 shadow-sm flex flex-col gap-3.5">
                   <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Sliders className="w-4 h-4 text-indigo-500" />
-                    Transparency & Typography
+                    Typography Settings
                   </span>
-
-                  <label className="flex items-center justify-between cursor-pointer p-2.5 rounded-xl bg-white/60 hover:bg-white border border-slate-100 hover:border-indigo-100 transition-all group">
-                    <span className="text-xs font-semibold text-slate-700 group-hover:text-indigo-600 transition-colors">Strictly Transparent Panels</span>
-                    <input
-                      type="checkbox"
-                      checked={onlyTransparentPanels}
-                      onChange={(e) => setOnlyTransparentPanels(e.target.checked)}
-                      className="cursor-pointer h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                  </label>
-                  <p className="text-[9px] text-slate-400 pl-1 -mt-2 leading-relaxed">
-                    Forces transparent backgrounds for Title, Legend, and Stats panels to optimize overlay visibility.
-                  </p>
 
                   <div className="bg-white/60 p-3 rounded-2xl border border-slate-100 shadow-inner flex flex-col gap-3">
                     <div>
@@ -7607,68 +7710,107 @@ ${svgStatsPanel}
                         <span className="text-[10px] text-slate-600 font-mono font-bold block overflow-hidden text-ellipsis">{shapefileLegendTextColor}</span>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* 7. Batch Tab */}
-            {activeTab === "batch" && (
-              <div className="flex flex-col gap-5">
-                <div className="bg-white/40 backdrop-blur-md p-5 rounded-3xl border border-white/50 shadow-sm flex flex-col gap-3.5">
-                  <div className="flex items-center gap-2">
-                    <Play className="w-5 h-5 text-indigo-500" />
-                    <span className="text-xs font-bold text-slate-800">Yearbook Batch Compilation</span>
-                  </div>
-                  <p className="text-slate-500 text-[11px] leading-relaxed">
-                    Generate and compile publication-ready maps for all chemical parameters in the dataset with a single click.
-                  </p>
-
-                  <button
-                    onClick={runBatchGeneration}
-                    disabled={batchGenerating}
-                    className="cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold py-3.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(16,185,129,0.2),inset_0_1px_1px_rgba(255,255,255,0.4)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none mt-1"
-                  >
-                    <Play className="w-4 h-4 text-emerald-100" />
-                    {batchGenerating ? "Compiling Maps..." : "Run Bulk Compilation"}
-                  </button>
-
-                  {batchGenerating && (
-                    <div className="flex flex-col gap-2 mt-2 bg-emerald-50/40 p-3 rounded-2xl border border-emerald-100/50">
-                      <div className="w-full bg-slate-200/60 h-2 rounded-full overflow-hidden">
-                        <div className="bg-gradient-to-r from-emerald-400 to-teal-500 h-full transition-all duration-300" style={{ width: `${batchProgress}%` }} />
+                    <div className="col-span-2 grid grid-cols-2 gap-2.5 mt-2 pt-2 border-t border-slate-100">
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold mb-1">COLUMNS</label>
+                        <select
+                          value={shapefileLegendColumns}
+                          onChange={(e) => setShapefileLegendColumns(parseInt(e.target.value) || 1)}
+                          className="w-full text-xs font-bold bg-white border border-slate-200/80 rounded-xl p-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 cursor-pointer"
+                        >
+                          <option value="1">1 Col</option>
+                          <option value="2">2 Cols</option>
+                          <option value="3">3 Cols</option>
+                        </select>
                       </div>
-                      <div className="flex justify-between text-[10px] text-slate-600 font-bold">
-                        <span>PROGRESS STATUS</span>
-                        <span className="font-mono">{batchProgress}%</span>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold mb-1">FONT STYLE</label>
+                        <select
+                          value={shapefileLegendFontStyle}
+                          onChange={(e) => setShapefileLegendFontStyle(e.target.value)}
+                          className="w-full text-xs font-bold bg-white border border-slate-200/80 rounded-xl p-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 cursor-pointer"
+                        >
+                          <option value="normal">Regular</option>
+                          <option value="bold">Bold</option>
+                          <option value="italic">Italic</option>
+                          <option value="bold-italic">Bold Italic</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold mb-1">FONT FAMILY</label>
+                        <select
+                          value={shapefileLegendFontFamily}
+                          onChange={(e) => setShapefileLegendFontFamily(e.target.value)}
+                          className="w-full text-xs font-bold bg-white border border-slate-200/80 rounded-xl p-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 cursor-pointer"
+                        >
+                          <option value="Times New Roman">Times New Roman</option>
+                          <option value="Calibri">Calibri</option>
+                          <option value="sans-serif">Clean Sans</option>
+                          <option value="serif">Official Serif</option>
+                          <option value="monospace">Mono Technical</option>
+                          <option value="cursive">Elegant Cursive</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold mb-1">SPACING</label>
+                        <input
+                          type="number"
+                          step="1"
+                          value={shapefileLegendSpacing}
+                          onChange={(e) => setShapefileLegendSpacing(parseInt(e.target.value) || 15)}
+                          className="w-full text-xs font-bold bg-white border border-slate-200/80 rounded-xl p-1.5 text-center text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                          min="10"
+                          max="40"
+                        />
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
 
-                <div className="bg-white/40 backdrop-blur-md p-5 rounded-3xl border border-white/50 shadow-sm flex flex-col gap-3">
+                {/* Neatline Map Border Customization */}
+                <div className="bg-white/40 backdrop-blur-md p-4 rounded-3xl border border-white/50 shadow-sm flex flex-col gap-3">
                   <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <CheckCircle className="w-4 h-4 text-indigo-500" />
-                    Compiled GIS Output Folder
+                    <Grid3X3 className="w-4 h-4 text-indigo-500" />
+                    Neatline Border Customization
                   </span>
-                  
-                  <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto custom-scrollbar bg-white/60 p-3.5 rounded-2xl border border-slate-100 shadow-inner text-[10px] font-mono">
-                    <span className="text-slate-700 font-extrabold flex items-center gap-1">
-                      📁 Results/Yearbook_Maps/
-                    </span>
-                    <div className="flex flex-col gap-1.5 mt-1 border-t border-slate-100/50 pt-2">
-                      {exportQueue.map((item, idx) => (
-                        <span key={idx} className="text-slate-500 pl-2 flex items-center gap-2">
-                          <CheckCircle className={`w-3.5 h-3.5 shrink-0 ${item.status === "done" ? "text-emerald-500" : "text-slate-300"}`} />
-                          <span className="truncate">{item.name}</span>
-                        </span>
-                      ))}
-                      {exportQueue.length === 0 && <span className="text-slate-400 italic pl-2">Queue is empty</span>}
+
+                  <div className="bg-white/60 p-3 rounded-2xl border border-slate-100 shadow-inner flex flex-col gap-3">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 font-bold mb-1 uppercase tracking-wide">BORDER STYLE</label>
+                      <select
+                        value={mapBorderType}
+                        onChange={(e) => setMapBorderType(e.target.value as "single" | "double")}
+                        className="w-full text-xs font-semibold bg-white border border-slate-200/80 rounded-xl p-2.5 focus:outline-none text-slate-800 cursor-pointer"
+                      >
+                        <option value="single">Single Neatline Border</option>
+                        <option value="double">Double Neatline Border (Professional)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 font-bold mb-1 uppercase tracking-wide">BORDER COLOR</label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="color"
+                          value={mapBorderColor}
+                          onChange={(e) => setMapBorderColor(e.target.value)}
+                          className="w-10 h-10 cursor-pointer border border-slate-200 rounded-xl p-0.5"
+                        />
+                        <input
+                          type="text"
+                          value={mapBorderColor}
+                          onChange={(e) => setMapBorderColor(e.target.value)}
+                          className="flex-1 text-xs font-mono font-bold bg-white border border-slate-200/80 rounded-xl p-2.5 uppercase text-slate-800 focus:outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             )}
+
+
 
           </div>
 
@@ -7744,14 +7886,6 @@ ${svgStatsPanel}
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  onClick={autoGenerateAndSendAll}
-                  title="Generate all maps automatically with current decorations/boundaries and send to Annual Report"
-                  className="cursor-pointer bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-[0_4px_12px_rgba(217,119,6,0.3),inset_0_1px_1px_rgba(255,255,255,0.4)] border border-amber-600/50 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] animate-pulse"
-                >
-                  <Play className="w-4 h-4 text-amber-100 animate-spin" style={{ animationDuration: '3s' }} /> Auto-Generate All
-                </button>
-
                 <button
                   onClick={sendToBulletin}
                   className="cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-[0_4px_12px_rgba(16,185,129,0.3),inset_0_1px_1px_rgba(255,255,255,0.4)] border border-emerald-600/50 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"

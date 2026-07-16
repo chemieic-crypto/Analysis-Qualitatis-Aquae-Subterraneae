@@ -40,7 +40,9 @@ import {
   Globe,
   Layers,
   Cpu,
-  Settings
+  Settings,
+  Clock,
+  Calendar
 } from "lucide-react";
 
 import Highcharts from "highcharts";
@@ -100,6 +102,19 @@ export default function App() {
 
   // State to trigger dynamic recalculation and re-rendering of all components on parameter limit changes
   const [limitsVersion, setLimitsVersion] = useState(0);
+
+  // Live modern date and time state with high precision
+  const [currentDateTime, setCurrentDateTime] = useState<Date>(new Date());
+
+  useEffect(() => {
+    let animationFrameId: number;
+    const updateTime = () => {
+      setCurrentDateTime(new Date());
+      animationFrameId = requestAnimationFrame(updateTime);
+    };
+    animationFrameId = requestAnimationFrame(updateTime);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
 
   // State values for uploaded records
   const [rawData, setRawData] = useState<any[]>([]);
@@ -974,15 +989,32 @@ export default function App() {
             <div className="text-center sm:text-left">
               <div className="flex flex-col sm:flex-row sm:items-center gap-x-5 gap-y-1">
                 {/* Main Title 'भूजल गुणवत्ता' (Bhujal Gunvaatta in Devanagari Cursive) */}
-                <h1 className="text-4xl font-bold text-blue-700 tracking-wide font-cursive-devanagari select-none" style={{ fontFamily: "'Kalam', 'Yatra One', cursive" }}>
+                <h1 className="text-[47px] font-black text-blue-700 tracking-wide font-cursive-devanagari select-none" style={{ fontFamily: "'Kalam', 'Yatra One', cursive", lineHeight: "1.1" }}>
                   भूजल गुणवत्ता
                 </h1>
                 {/* English Title styled in British Cursive Script */}
-                <h2 className="text-4xl md:text-5xl font-medium text-indigo-950 tracking-wide font-cursive select-none pt-1" style={{ fontFamily: "'Great Vibes', 'Playfair Display', serif" }}>
+                <h2 className="text-[47px] md:text-[62px] font-medium text-indigo-950 tracking-wide font-cursive select-none pt-1" style={{ fontFamily: "'Great Vibes', 'Playfair Display', serif", lineHeight: "1.1" }}>
                   Data Analysis Interface
                 </h2>
               </div>
             </div>
+          </div>
+
+          {/* 3. Modern Live Date and Time Display */}
+          <div className="flex flex-row md:flex-col items-center md:items-end gap-1 shrink-0 w-full md:w-auto justify-between md:justify-end text-right select-none">
+            <span className="text-xl md:text-2xl font-black text-[#ff6b00] font-mono tracking-tight tabular-nums">
+              {(() => {
+                const hours = String(currentDateTime.getHours() % 12 || 12).padStart(2, '0');
+                const minutes = String(currentDateTime.getMinutes()).padStart(2, '0');
+                const seconds = String(currentDateTime.getSeconds()).padStart(2, '0');
+                const ms = String(currentDateTime.getMilliseconds()).padStart(3, '0');
+                const ampm = currentDateTime.getHours() >= 12 ? 'PM' : 'AM';
+                return `${hours}:${minutes}:${seconds}.${ms} ${ampm}`;
+              })()}
+            </span>
+            <span className="text-xs font-extrabold text-[#58c30c] tracking-wide uppercase">
+              {currentDateTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+            </span>
           </div>
         </div>
 

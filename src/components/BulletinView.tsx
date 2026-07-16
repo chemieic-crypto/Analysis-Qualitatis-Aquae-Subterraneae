@@ -4033,7 +4033,7 @@ export default function BulletinView({
       if (stationsMapBase64) {
         stationsMapHTML = `
           <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
-            <img src="${stationsMapBase64}" width="650" style="max-width: 100%; height: auto; border: 1px solid #e2e8f0; border-radius: 8px; display: block; margin: 0 auto; background: transparent;" alt="Distribution of Ground Water Quality Monitoring Station" />
+            <img src="${stationsMapBase64}" width="650" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="Distribution of Ground Water Quality Monitoring Station" />
             <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: ${
               (titleRegion && titleRegion.toUpperCase() !== "INDIA")
                 ? "Statewide"
@@ -4578,7 +4578,7 @@ Although natural geological sources account for the majority of arsenic contamin
                 Spatial GIS Map showing ${config.name} (${formatChemicalFormula(configKey)}) distribution is given in figure ${figIndex}.
               </p>
               <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
-                <img src="${mapImageBase64}" width="650" style="max-width: 100%; height: auto; border: 1px solid #e2e8f0; border-radius: 8px; display: block; margin: 0 auto; background: transparent;" alt="GIS Spatial Map of ${config.name}" />
+                <img src="${mapImageBase64}" width="650" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="GIS Spatial Map of ${config.name}" />
                 <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: Spatial GIS Map showing ${config.name} (${formatChemicalFormula(configKey)}) distribution</p>
               </div>
               `
@@ -5297,9 +5297,37 @@ Although natural geological sources account for the majority of arsenic contamin
       `;
 
       let gibbsPlotHTML = "";
-      // Keep a reference to generateGibbsDiagramHTML to avoid unused function linter warning
-      if (false as boolean) {
-        generateGibbsDiagramHTML("cation", "", [], {});
+      if (hasCompleteFaciesData) {
+        gibbsPlotHTML = `
+          <h4 style="font-size: 13pt; font-weight: bold; color: #1e3a8a; margin-top: 35px; margin-bottom: 10px; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 5px; page-break-before: always;">5.2 Gibbs Mechanisms of Aquifer Chemistry</h4>
+          <p style="text-align: justify; line-height: 1.6; margin-bottom: 15px;">
+            The <strong>Gibbs Diagrams (Gibbs 1970)</strong> are widely used to understand the functional mechanisms controlling groundwater chemistry, distinguishing among three major natural processes: <strong>precipitation dominance</strong> (low TDS, high Na/Cl ratios), <strong>rock-weathering dominance</strong> (medium TDS, low Na/Cl ratios), and <strong>evaporation-crystallization dominance</strong> (very high TDS, high Na/Cl ratios).
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 35px; margin-top: 20px;">
+        `;
+        
+        renderSets.forEach((rset) => {
+          const gibbsCationSVG = generateGibbsDiagramHTML("cation", `Cation Dominance - ${rset.name}`, rset.samples, groupColorMap);
+          const gibbsAnionSVG = generateGibbsDiagramHTML("anion", `Anion Dominance - ${rset.name}`, rset.samples, groupColorMap);
+          
+          gibbsPlotHTML += `
+            <div style="background-color: #ffffff; padding: 25px; page-break-inside: avoid; text-align: center; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 20px;">
+              <div style="display: flex; flex-direction: row; justify-content: center; gap: 20px; flex-wrap: wrap;">
+                <div style="width: 280px; display: inline-block; vertical-align: top;">
+                  ${gibbsCationSVG}
+                </div>
+                <div style="width: 280px; display: inline-block; vertical-align: top;">
+                  ${gibbsAnionSVG}
+                </div>
+              </div>
+              <p style="text-align: center; font-style: italic; font-size: 10pt; margin-top: 15px; color: #475569;">
+                <strong>Figure ${figIndex++}:</strong> ${getDiagramCaption("Gibbs", rset.name, rset.samples)}
+              </p>
+            </div>
+          `;
+        });
+        
+        gibbsPlotHTML += `</div>`;
       }
 
       faciesSummaryHTML += gibbsPlotHTML;
@@ -5767,7 +5795,7 @@ Although natural geological sources account for the majority of arsenic contamin
             ${
               sarMapImgBase64
                 ? `<div style="text-align: center; margin: 25px 0; page-break-inside: avoid;">
-                     <img src="${sarMapImgBase64}" width="550" style="max-width: 100%; height: auto; border: 1px solid #cbd5e1; border-radius: 8px; display: block; margin: 0 auto; background: #ffffff;" alt="SAR Exceedance Map" />
+                     <img src="${sarMapImgBase64}" width="550" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: #ffffff;" alt="SAR Exceedance Map" />
                      <p style="text-align: center; font-style: italic; font-size: 10.5pt; margin-top: 10px;">
                        <strong>Figure ${figIndex++}:</strong> Geographic distribution of groundwater locations exceeding SAR permissible limits (>26)
                      </p>
@@ -5823,7 +5851,7 @@ Although natural geological sources account for the majority of arsenic contamin
           ${
             rscMapImgBase64
               ? `<div style="text-align: center; margin: 25px 0; page-break-inside: avoid;">
-                   <img src="${rscMapImgBase64}" width="550" style="max-width: 100%; height: auto; border: 1px solid #cbd5e1; border-radius: 8px; display: block; margin: 0 auto; background: #ffffff;" alt="RSC Exceedance Map" />
+                   <img src="${rscMapImgBase64}" width="550" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: #ffffff;" alt="RSC Exceedance Map" />
                    <p style="text-align: center; font-style: italic; font-size: 10.5pt; margin-top: 10px;">
                      <strong>Figure ${figIndex++}:</strong> Geographic distribution of groundwater locations exceeding RSC permissible limits (>2.5)
                    </p>
@@ -6156,10 +6184,9 @@ Although natural geological sources account for the majority of arsenic contamin
             limitText = `above the permissible limit of ${limit} ${config.unit}`;
           }
 
-          // Cap the displayed rows to prevent out-of-memory or browser crash
-          const maxRowsToDisplay = 100;
+          // Show all rows as requested by user, no capping
           const totalExceeded = exceedingRows.length;
-          const slicedRows = exceedingRows.slice(0, maxRowsToDisplay);
+          const slicedRows = exceedingRows;
 
           let tableRowsHTML = "";
           slicedRows.forEach((item, rIdx) => {
@@ -6190,14 +6217,7 @@ Although natural geological sources account for the majority of arsenic contamin
             `;
           });
 
-          let truncationWarning = "";
-          if (totalExceeded > maxRowsToDisplay) {
-            truncationWarning = `
-              <p style="font-size: 10pt; font-family: 'Times New Roman', Times, serif; font-style: italic; color: #64748b; margin-top: 5px;">
-                *Note: Displaying the first ${maxRowsToDisplay} records out of ${totalExceeded} total exceedances to keep the document fast to generate and open. For the full dataset, please use the table search and export features.
-              </p>
-            `;
-          }
+          const truncationWarning = "";
 
           const paramHeaderCol = config.unit ? `${config.name} (${config.unit})` : config.name;
 
@@ -6275,9 +6295,9 @@ Although natural geological sources account for the majority of arsenic contamin
           const romanNum = getRomanNumeral(annexureIndex);
           annexureIndex++;
 
-          const maxRowsToDisplay = 150;
+          // Show all rows as requested by user, no capping
           const totalExceeded = consolidatedExceedingRows.length;
-          const slicedRows = consolidatedExceedingRows.slice(0, maxRowsToDisplay);
+          const slicedRows = consolidatedExceedingRows;
 
           let consolidatedTableRowsHTML = "";
           slicedRows.forEach((item, rIdx) => {
@@ -6310,14 +6330,7 @@ Although natural geological sources account for the majority of arsenic contamin
             `;
           });
 
-          let truncationWarning = "";
-          if (totalExceeded > maxRowsToDisplay) {
-            truncationWarning = `
-              <p style="font-size: 10pt; font-family: 'Times New Roman', Times, serif; font-style: italic; color: #64748b; margin-top: 5px;">
-                *Note: Displaying the first ${maxRowsToDisplay} records out of ${totalExceeded} total exceeding locations to keep the document fast to generate and open. For the full dataset, please use the table search and export features.
-              </p>
-            `;
-          }
+          const truncationWarning = "";
 
           annexuresHTML += `
             <div style="font-family: 'Times New Roman', Times, serif; margin-top: 20px;">

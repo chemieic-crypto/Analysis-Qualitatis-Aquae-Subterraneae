@@ -693,6 +693,16 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
 </head>
 <body>
   <div class="Section1">
+    <!-- Draft Report Header Banner -->
+    <div style="background-color: #fffaf0; border: 3px double #dd6b20; padding: 15px 20px; text-align: center; margin-bottom: 25px; border-radius: 4px;">
+      <h2 style="color: #dd6b20; margin: 0 0 5px 0 !important; font-size: 16pt; font-family: 'Times New Roman', Times, serif; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; border-bottom: none; padding-bottom: 0; text-align: center;">
+        ⚠️ DRAFT VERSION
+      </h2>
+      <p style="margin: 0 !important; font-size: 10.5pt; font-family: 'Times New Roman', Times, serif; color: #7b341e; line-height: 1.4; text-align: center;">
+        This Groundwater Quality Report is a Draft copy downloaded for preview and validation purposes. All values, maps, and conclusions are subject to change.
+      </p>
+    </div>
+
     ${finalHtml}
   </div>
 </body>
