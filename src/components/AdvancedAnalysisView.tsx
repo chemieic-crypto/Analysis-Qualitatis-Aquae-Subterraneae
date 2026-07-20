@@ -1111,10 +1111,13 @@ export default function AdvancedAnalysisView({
     }
     // Append virtual/calculated agricultural and class parameters
     const virtuals = [
+      { key: "TDS", name: "Total Dissolved Solids (TDS)", unit: "mg/l" },
+      { key: "Alkalinity", name: "Total Alkalinity", unit: "mg/l" },
       { key: "SAR", name: "Sodium Adsorption Ratio (SAR)", unit: "Ratio" },
       { key: "RSC", name: "Residual Sodium Carbonate (RSC)", unit: "meq/l" },
       { key: "TH", name: "Total Hardness (TH)", unit: "mg/l" },
       { key: "SSP", name: "Soluble Sodium Percentage (SSP)", unit: "%" },
+      { key: "Na%", name: "Sodium Percentage (Na%)", unit: "%" },
       { key: "PI", name: "Permeability Index (PI)", unit: "%" },
       { key: "KR", name: "Kelly's Ratio (KR)", unit: "Ratio" },
       { key: "MH", name: "Magnesium Hazard (MH)", unit: "%" }
@@ -1165,8 +1168,14 @@ export default function AdvancedAnalysisView({
 
   // Helper to extract numeric parameter value (now supporting virtual/calculated parameters)
   const getParamNumericValue = (row: any, paramKey: string): number | null => {
-    if (["SAR", "RSC", "TH", "SSP", "PI", "KR", "MH", "USSL", "PIPER"].includes(paramKey)) {
+    if (["SAR", "RSC", "TH", "SSP", "Na%", "PI", "KR", "MH", "USSL", "PIPER", "TDS", "Alkalinity"].includes(paramKey)) {
       const meq = getRowMeq(row);
+      if (paramKey === "TDS") {
+        return meq.TDS || null;
+      }
+      if (paramKey === "Alkalinity") {
+        return (meq.HCO3 + meq.CO3) * 50;
+      }
       if (paramKey === "SAR") {
         const denom = Math.sqrt((meq.Ca + meq.Mg) / 2);
         return denom > 0 ? meq.Na / denom : 0;
@@ -1177,7 +1186,7 @@ export default function AdvancedAnalysisView({
       if (paramKey === "TH") {
         return (meq.Ca + meq.Mg) * 50;
       }
-      if (paramKey === "SSP") {
+      if (paramKey === "SSP" || paramKey === "Na%") {
         const sum = meq.Ca + meq.Mg + meq.Na + meq.K;
         return sum > 0 ? ((meq.Na + meq.K) * 100) / sum : 0;
       }

@@ -332,6 +332,7 @@ export default function GisChoroplethMap({
   const [showRegionNames, setShowRegionNames] = useState<boolean>(true);
   const [showStateNames, setShowStateNames] = useState<boolean>(true);
   const [showDistrictNames, setShowDistrictNames] = useState<boolean>(true);
+  const [showBlockNames, setShowBlockNames] = useState<boolean>(true);
   const [drawnNames] = useState<Set<string>>(new Set());
   const [stateFontStyle, setStateFontStyle] = useState<string>("bold");
   const [stateFontColor, setStateFontColor] = useState<string>("#1e293b");
@@ -353,6 +354,9 @@ export default function GisChoroplethMap({
   const [legendFontSize, setLegendFontSize] = useState<number>(9);
   const [legendFontStyle, setLegendFontStyle] = useState<string>("normal");
   const [legendFontColor, setLegendFontColor] = useState<string>("#1e293b");
+
+  const [nilColor, setNilColor] = useState<string>("#38bdf8");
+  const [nilLabel, setNilLabel] = useState<string>("Nil Exceedance (0%)");
 
   const [expandedTypography, setExpandedTypography] = useState<boolean>(false);
 
@@ -389,7 +393,7 @@ export default function GisChoroplethMap({
 
   useEffect(() => {
     featureMatchCache.current = new WeakMap();
-  }, [rawData, layers]);
+  }, [rawData, layers, reportingLevel, activeParam]);
 
   // Helper to parse coordinates safely
   const parseCoordinate = (val: any): number | null => {
@@ -460,35 +464,72 @@ export default function GisChoroplethMap({
       const lon = parseCoordinate(row[safeHeaders.longitude]);
 
       let val = NaN;
-      if (activeParam === "SAR" || activeParam === "RSC") {
+      const isVirtual = ["SAR", "RSC", "SSP", "Na%", "PI", "KR", "MH", "TDS", "Alkalinity"].includes(activeParam);
+      if (isVirtual) {
         const caCol = Object.keys(headerMap).find((k) => headerMap[k] === "Ca") || "Ca";
         const mgCol = Object.keys(headerMap).find((k) => headerMap[k] === "Mg") || "Mg";
         const naCol = Object.keys(headerMap).find((k) => headerMap[k] === "Na") || "Na";
+        const kCol = Object.keys(headerMap).find((k) => headerMap[k] === "K") || "K";
         const hco3Col = Object.keys(headerMap).find((k) => headerMap[k] === "HCO3") || "HCO3";
         const co3Col = Object.keys(headerMap).find((k) => headerMap[k] === "CO3") || "CO3";
+        const ecCol = Object.keys(headerMap).find((k) => headerMap[k] === "EC") || "EC";
+        const tdsCol = Object.keys(headerMap).find((k) => headerMap[k] === "TDS") || "TDS";
+        const alkCol = Object.keys(headerMap).find((k) => headerMap[k] === "Alkalinity") || "Alkalinity";
 
         const caVal = parseFloat(row[caCol]);
         const mgVal = parseFloat(row[mgCol]);
         const naVal = parseFloat(row[naCol]);
+        const kVal = parseFloat(row[kCol]) || 0;
         const hco3Val = parseFloat(row[hco3Col]);
         const co3Val = parseFloat(row[co3Col]) || 0;
+        const ecVal = parseFloat(row[ecCol]);
+        const tdsVal = parseFloat(row[tdsCol]);
+        const alkVal = parseFloat(row[alkCol]);
 
         const caMeq = !isNaN(caVal) ? caVal / 20.04 : 0;
         const mgMeq = !isNaN(mgVal) ? mgVal / 12.15 : 0;
         const naMeq = !isNaN(naVal) ? naVal / 22.99 : 0;
+        const kMeq = !isNaN(kVal) ? kVal / 39.10 : 0;
         const hco3Meq = !isNaN(hco3Val) ? hco3Val / 61.02 : 0;
         const co3Meq = co3Val / 30.00;
 
-        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
-          if (activeParam === "SAR") {
+        if (activeParam === "SAR") {
+          if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
             const denom = Math.sqrt((caMeq + mgMeq) / 2);
             if (denom > 0) val = naMeq / denom;
-          } else {
+          }
+        } else if (activeParam === "RSC") {
+          if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(hco3Val)) {
             val = hco3Meq + co3Meq - (caMeq + mgMeq);
           }
+        } else if (activeParam === "TDS") {
+          if (!isNaN(tdsVal)) {
+            val = tdsVal;
+          } else if (!isNaN(ecVal)) {
+            val = ecVal * 0.65;
+          }
+        } else if (activeParam === "Alkalinity") {
+          if (!isNaN(alkVal)) {
+            val = alkVal;
+          } else if (!isNaN(hco3Val)) {
+            val = (hco3Meq + co3Meq) * 50;
+          }
+        } else if (activeParam === "SSP" || activeParam === "Na%") {
+          const sum = caMeq + mgMeq + naMeq + kMeq;
+          if (sum > 0) val = ((naMeq + kMeq) * 100) / sum;
+        } else if (activeParam === "PI") {
+          const denom = caMeq + mgMeq + naMeq;
+          if (denom > 0) val = ((naMeq + Math.sqrt(hco3Meq)) * 100) / denom;
+        } else if (activeParam === "KR") {
+          const denom = caMeq + mgMeq;
+          if (denom > 0) val = naMeq / denom;
+        } else if (activeParam === "MH") {
+          const denom = caMeq + mgMeq;
+          if (denom > 0) val = (mgMeq * 100) / denom;
         }
       } else {
-        val = parseFloat(row[activeParam]);
+        const paramCol = Object.keys(headerMap).find((k) => headerMap[k] === activeParam) || activeParam;
+        val = parseFloat(row[paramCol] || row[activeParam]);
       }
 
       if (!isNaN(val)) {
@@ -522,6 +563,16 @@ export default function GisChoroplethMap({
         sum += v;
         if (activeParam === "SAR") {
           if (v > 26) failCount++;
+        } else if (activeParam === "RSC") {
+          if (v > 2.5) failCount++;
+        } else if (activeParam === "SSP" || activeParam === "Na%") {
+          if (v > 60) failCount++;
+        } else if (activeParam === "PI") {
+          if (v < 25) failCount++;
+        } else if (activeParam === "KR") {
+          if (v > 1.0) failCount++;
+        } else if (activeParam === "MH") {
+          if (v > 50) failCount++;
         } else if (activeParam === "pH") {
           if (v < activeConfig.b1 || v > activeConfig.b2) failCount++;
         } else if (activeConfig.b1 === activeConfig.b2) {
@@ -613,7 +664,7 @@ export default function GisChoroplethMap({
 
   // Five-color gradient for groundwater parameter exceedance percentage (customizable classes)
   const getColorForExceedance = (pct: number): string => {
-    if (pct === 0) return "#38bdf8"; // Nil Exceedance color
+    if (pct === 0) return nilColor; // Nil Exceedance color
     if (activeClasses && activeClasses.length > 0) {
       const matched = activeClasses.find(c => pct <= c.limit);
       if (matched) return matched.color;
@@ -1113,8 +1164,9 @@ export default function GisChoroplethMap({
                 const baseLabel = String(f.properties?.[layer.labelKey] || "");
                 const isLayerState = (layer.name || "").toLowerCase().includes("state");
                 const isLayerDist = (layer.name || "").toLowerCase().includes("dist") || (layer.name || "").toLowerCase().includes("district");
+                const isLayerBlock = (layer.name || "").toLowerCase().includes("block");
                 const showThisLayerLabels = showRegionNames && (
-                  isLayerState ? showStateNames : isLayerDist ? showDistrictNames : true
+                  isLayerState ? showStateNames : isLayerDist ? showDistrictNames : isLayerBlock ? showBlockNames : true
                 );
                 if (showThisLayerLabels && baseLabel) {
                   const labelText = nameOverrides[baseLabel] || baseLabel;
@@ -1501,7 +1553,7 @@ export default function GisChoroplethMap({
         ? showStateNames
         : reportingLevel === "District"
         ? showDistrictNames
-        : showDistrictNames
+        : showBlockNames
     );
     if (shouldDrawCentroidLabels) {
       screenCentroids.forEach(({ sx, sy, g }) => {
@@ -1573,7 +1625,7 @@ export default function GisChoroplethMap({
     ctx.fillText("% Exceedance Legend", lX + 12, lY + 20);
 
     const activeLegendClasses: {color: string, label: string}[] = [];
-    activeLegendClasses.push({ color: "#38bdf8", label: "Nil Exceedance (0%)" });
+    activeLegendClasses.push({ color: nilColor, label: nilLabel });
     
     activeClasses.forEach((cls, idx) => {
       const prevLimit = idx === 0 ? 0 : activeClasses[idx - 1].limit;
@@ -1684,6 +1736,7 @@ export default function GisChoroplethMap({
     showRegionNames, 
     showStateNames,
     showDistrictNames,
+    showBlockNames,
     showIndiaBoundary,
     layoutMode,
     showMapBorder,
@@ -1717,6 +1770,8 @@ export default function GisChoroplethMap({
     legendFontSize,
     legendFontStyle,
     legendFontColor,
+    nilColor,
+    nilLabel,
     isVisible
   ]);
 
@@ -2168,6 +2223,16 @@ export default function GisChoroplethMap({
                   className="text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 w-3 h-3"
                 />
                 <span className="text-[10px] font-bold text-slate-800">Show District Names</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-slate-100/50 transition-all">
+                <input
+                  type="checkbox"
+                  checked={showBlockNames}
+                  onChange={(e) => setShowBlockNames(e.target.checked)}
+                  className="text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 w-3 h-3"
+                />
+                <span className="text-[10px] font-bold text-slate-800">Show Block Names</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-slate-100/50 transition-all border-t border-slate-200/50 pt-1.5 mt-0.5">
@@ -2757,6 +2822,28 @@ export default function GisChoroplethMap({
             {/* Editable Classes list */}
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 border-t border-slate-200/50 pt-2">
               <span className="text-[9px] font-bold text-slate-500 block mb-1">Modify Bounds & Palette:</span>
+              
+              {/* Nil Exceedance Row */}
+              <div className="flex items-center gap-1.5 p-1 bg-white rounded-lg border border-slate-200/60 shadow-3xs">
+                <input
+                  type="text"
+                  value={nilLabel}
+                  title="Nil Exceedance Label"
+                  onChange={(e) => setNilLabel(e.target.value)}
+                  className="flex-1 min-w-[70px] text-[9px] px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded font-bold"
+                  placeholder="Nil Exceedance"
+                />
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-[9px] font-bold text-slate-400">0% Only</span>
+                </div>
+                <input
+                  type="color"
+                  value={nilColor}
+                  onChange={(e) => setNilColor(e.target.value)}
+                  className="w-5 h-5 p-0 cursor-pointer border-0 rounded bg-transparent ml-auto shrink-0"
+                />
+              </div>
+
               {activeClasses.map((cls, idx) => {
                 const prevLimit = idx === 0 ? 0 : activeClasses[idx - 1].limit;
                 return (
@@ -2771,7 +2858,7 @@ export default function GisChoroplethMap({
                         updated[idx] = { ...updated[idx], label: e.target.value };
                         updateClasses(updated);
                       }}
-                      className="w-14 text-[9px] px-1 py-0.5 bg-slate-50 border border-slate-200 rounded font-bold"
+                      className="flex-1 min-w-[70px] text-[9px] px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded font-bold"
                     />
 
                     {/* Class limit input */}

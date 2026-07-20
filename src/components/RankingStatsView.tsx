@@ -79,7 +79,27 @@ export default function RankingStatsView({
     if (hasCa && hasMg && hasHco3 && !params.includes("RSC")) {
       params.push("RSC");
     }
-    return params;
+
+    // Ensure all calculated agricultural & hazard parameters are always listed
+    const extraParams = ["TDS", "Alkalinity", "SAR", "RSC", "SSP", "Na%", "PI", "MH"];
+    extraParams.forEach(ep => {
+      const exists = params.some(p => p.toLowerCase() === ep.toLowerCase() || (headerMap[p] && headerMap[p].toLowerCase() === ep.toLowerCase()));
+      if (!exists) {
+        params.push(ep);
+      }
+    });
+
+    const finalParams: string[] = [];
+    const seen = new Set<string>();
+    params.forEach(p => {
+      const upper = p.toUpperCase();
+      if (!seen.has(upper)) {
+        seen.add(upper);
+        finalParams.push(p);
+      }
+    });
+
+    return finalParams;
   }, [headerMap, rawData]);
 
   // Set default active parameter when list loads
@@ -91,8 +111,9 @@ export default function RankingStatsView({
 
   // Robust function to parse parameter value (including SAR and RSC fallback calculation)
   const getParamVal = useCallback((row: any, paramName: string) => {
-    if (paramName === "SAR" || paramName === "RSC") {
-      // First check if there is an actual Excel column mapped to SAR or RSC
+    const isVirtual = ["SAR", "RSC", "SSP", "Na%", "PI", "MH", "TDS", "Alkalinity"].includes(paramName);
+    if (isVirtual) {
+      // First check if there is an actual Excel column mapped to the parameter
       const excelCol = headerMap[paramName];
       if (excelCol && row[excelCol] !== undefined && row[excelCol] !== null) {
         const parsedVal = parseFloat(row[excelCol]);
@@ -103,32 +124,54 @@ export default function RankingStatsView({
       const caCol = headerMap["Ca"] || "Ca";
       const mgCol = headerMap["Mg"] || "Mg";
       const naCol = headerMap["Na"] || "Na";
+      const kCol = headerMap["K"] || "K";
       const hco3Col = headerMap["HCO3"] || "HCO3";
       const co3Col = headerMap["CO3"] || "CO3";
+      const ecCol = headerMap["EC"] || "EC";
+      const tdsCol = headerMap["TDS"] || "TDS";
+      const alkCol = headerMap["Alkalinity"] || "Alkalinity";
       
       const caVal = parseFloat(row[caCol]);
       const mgVal = parseFloat(row[mgCol]);
       const naVal = parseFloat(row[naCol]);
+      const kVal = parseFloat(row[kCol]) || 0;
       const hco3Val = parseFloat(row[hco3Col]);
       const co3Val = parseFloat(row[co3Col]) || 0;
+      const ecVal = parseFloat(row[ecCol]);
+      const tdsVal = parseFloat(row[tdsCol]);
+      const alkVal = parseFloat(row[alkCol]);
 
       const caMeq = !isNaN(caVal) ? caVal / 20.04 : 0;
       const mgMeq = !isNaN(mgVal) ? mgVal / 12.15 : 0;
       const naMeq = !isNaN(naVal) ? naVal / 22.99 : 0;
+      const kMeq = !isNaN(kVal) ? kVal / 39.10 : 0;
       const hco3Meq = !isNaN(hco3Val) ? hco3Val / 61.02 : 0;
       const co3Meq = co3Val / 30.00;
 
-      if (!isNaN(caVal) && !isNaN(mgVal)) {
-        if (paramName === "SAR") {
-          if (!isNaN(naVal)) {
-            const denom = Math.sqrt((caMeq + mgMeq) / 2);
-            return denom > 0 ? naMeq / denom : NaN;
-          }
-        } else {
-          if (!isNaN(hco3Val)) {
-            return (hco3Meq + co3Meq) - (caMeq + mgMeq);
-          }
+      if (paramName === "SAR") {
+        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
+          const denom = Math.sqrt((caMeq + mgMeq) / 2);
+          return denom > 0 ? naMeq / denom : NaN;
         }
+      } else if (paramName === "RSC") {
+        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(hco3Val)) {
+          return hco3Meq + co3Meq - (caMeq + mgMeq);
+        }
+      } else if (paramName === "TDS") {
+        if (!isNaN(tdsVal)) return tdsVal;
+        if (!isNaN(ecVal)) return ecVal * 0.65;
+      } else if (paramName === "Alkalinity") {
+        if (!isNaN(alkVal)) return alkVal;
+        if (!isNaN(hco3Val)) return (hco3Meq + co3Meq) * 50;
+      } else if (paramName === "SSP" || paramName === "Na%") {
+        const sum = caMeq + mgMeq + naMeq + kMeq;
+        if (sum > 0) return ((naMeq + kMeq) * 100) / sum;
+      } else if (paramName === "PI") {
+        const denom = caMeq + mgMeq + naMeq;
+        if (denom > 0) return ((naMeq + Math.sqrt(hco3Meq)) * 100) / denom;
+      } else if (paramName === "MH") {
+        const denom = caMeq + mgMeq;
+        if (denom > 0) return (mgMeq * 100) / denom;
       }
       return NaN;
     }

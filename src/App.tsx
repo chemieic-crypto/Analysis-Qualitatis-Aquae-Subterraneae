@@ -129,13 +129,10 @@ export default function App() {
   }, [tableFont]);
 
   useEffect(() => {
-    let animationFrameId: number;
-    const updateTime = () => {
+    const timer = setInterval(() => {
       setCurrentDateTime(new Date());
-      animationFrameId = requestAnimationFrame(updateTime);
-    };
-    animationFrameId = requestAnimationFrame(updateTime);
-    return () => cancelAnimationFrame(animationFrameId);
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   // State values for uploaded records
@@ -1223,9 +1220,8 @@ export default function App() {
                 const hours = String(currentDateTime.getHours() % 12 || 12).padStart(2, '0');
                 const minutes = String(currentDateTime.getMinutes()).padStart(2, '0');
                 const seconds = String(currentDateTime.getSeconds()).padStart(2, '0');
-                const ms = String(currentDateTime.getMilliseconds()).padStart(3, '0');
                 const ampm = currentDateTime.getHours() >= 12 ? 'PM' : 'AM';
-                return `${hours}:${minutes}:${seconds}.${ms} ${ampm}`;
+                return `${hours}:${minutes}:${seconds} ${ampm}`;
               })()}
             </span>
             <span className="text-xs font-extrabold text-[#8B4513] tracking-wide uppercase">
@@ -1711,7 +1707,16 @@ export default function App() {
           <div className={activeTab === "choropleth" ? "block" : "hidden"}>
             {(() => {
               const activeConfigKey = activeParam === "SAR" ? "SAR" : activeParam === "RSC" ? "RSC" : (headerMap[activeParam] || "");
-              const activeConfig = PARAM_CONFIG[activeConfigKey] || PARAM_CONFIG[activeParam] || { b1: 0, b2: 0, unit: "units", perm: 0 };
+              const virtualConfigs: Record<string, { b1: number; b2: number; unit: string; name: string }> = {
+                SAR: { b1: 10, b2: 18, unit: "Ratio", name: "Sodium Adsorption Ratio (SAR)" },
+                RSC: { b1: 1.25, b2: 2.5, unit: "meq/L", name: "Residual Sodium Carbonate (RSC)" },
+                SSP: { b1: 40, b2: 60, unit: "%", name: "Soluble Sodium Percentage (SSP)" },
+                "Na%": { b1: 40, b2: 60, unit: "%", name: "Sodium Percentage (%Na)" },
+                PI: { b1: 25, b2: 75, unit: "%", name: "Permeability Index (PI)" },
+                KR: { b1: 1.0, b2: 2.0, unit: "Ratio", name: "Kelly's Ratio (KR)" },
+                MH: { b1: 50, b2: 50, unit: "%", name: "Magnesium Hazard (MH)" }
+              };
+              const activeConfig = PARAM_CONFIG[activeConfigKey] || PARAM_CONFIG[activeParam] || virtualConfigs[activeParam] || { b1: 0, b2: 0, unit: "units", perm: 0 };
               
               return (
                 <div className="space-y-6 animate-fade-in">
@@ -1737,11 +1742,44 @@ export default function App() {
                           onChange={(e) => setActiveParam(e.target.value)}
                           className="bg-white border border-indigo-200 rounded-lg p-1.5 font-bold text-xs text-indigo-800 cursor-pointer min-w-[120px] shadow-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         >
-                          {(headers.params || ["pH", "TDS", "TH", "EC", "Cl", "NO3", "F"]).map((p, idx) => (
-                            <option key={idx} value={p}>{p}</option>
-                          ))}
-                          <option value="SAR">Sodium Adsorption Ratio (SAR)</option>
-                          <option value="RSC">Residual Sodium Carbonate (RSC)</option>
+                          {(() => {
+                            const baseParams = headers.params || ["pH", "TDS", "TH", "EC", "Cl", "NO3", "F"];
+                            const cleanBase = baseParams.filter(p => !["Na", "K", "HCO3", "CO3"].includes(p));
+                            
+                            const extraMap = [
+                              { value: "Alkalinity", label: "Total Alkalinity (Alkalinity)" },
+                              { value: "SAR", label: "Sodium Adsorption Ratio (SAR)" },
+                              { value: "RSC", label: "Residual Sodium Carbonate (RSC)" },
+                              { value: "SSP", label: "Soluble Sodium Percentage (SSP)" },
+                              { value: "Na%", label: "Sodium Percentage (%Na)" },
+                              { value: "PI", label: "Permeability Index (PI)" },
+                              { value: "KR", label: "Kelly's Ratio (KR)" },
+                              { value: "MH", label: "Magnesium Hazard (MH)" },
+                              { value: "TDS", label: "Total Dissolved Solids (TDS)" }
+                            ];
+
+                            const renderedValues = new Set<string>();
+                            const options: React.ReactNode[] = [];
+
+                            cleanBase.forEach(p => {
+                              const match = extraMap.find(m => m.value.toLowerCase() === p.toLowerCase() || (headerMap[p] && m.value.toLowerCase() === headerMap[p].toLowerCase()));
+                              const val = match ? match.value : p;
+                              const label = match ? match.label : p;
+                              if (!renderedValues.has(val)) {
+                                renderedValues.add(val);
+                                options.push(<option key={val} value={val}>{label}</option>);
+                              }
+                            });
+
+                            extraMap.forEach(m => {
+                              if (!renderedValues.has(m.value)) {
+                                renderedValues.add(m.value);
+                                options.push(<option key={m.value} value={m.value}>{m.label}</option>);
+                              }
+                            });
+
+                            return options;
+                          })()}
                         </select>
                       </div>
                     </div>

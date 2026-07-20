@@ -1276,6 +1276,7 @@ export default function UsslPiperAnalysisView({
             <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">District:</span> <span class="font-bold text-slate-700">${distHeader ? d[distHeader] : ""}</span></div>
             <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">EC Level:</span> <span class="font-mono font-bold text-teal-600">${d._calc.ecVal} μS/cm</span></div>
             <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">SAR Value:</span> <span class="font-mono font-bold text-orange-600">${d._calc.sar.toFixed(2)}</span></div>
+            <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">% Sodium:</span> <span class="font-mono font-bold text-emerald-600">${d._calc.naPerc.toFixed(1)}%</span></div>
             <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">Hydro-Facies:</span> <span class="font-black hover:underline" style="color: ${faciesColors[d._calc.facies] || '#475569'}">${faciesName}</span></div>
             <div class="flex justify-between border-b border-slate-50 pb-1"><span class="text-slate-400 font-bold">USSL Class:</span> <span class="font-black hover:underline" style="color: ${usslColors[d._calc.ussl] || '#475569'}">${usslName}</span></div>
           </div>
@@ -2086,6 +2087,7 @@ export default function UsslPiperAnalysisView({
             <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">District:</span> <span class="font-bold text-slate-700">${distHeader ? d[distHeader] : ""}</span></div>
             <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">EC Level:</span> <span class="font-mono font-bold text-teal-600">${d._calc.ecVal} μS/cm</span></div>
             <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">SAR Value:</span> <span class="font-mono font-bold text-orange-600">${d._calc.sar.toFixed(2)}</span></div>
+            <div class="flex justify-between border-b border-slate-50 pb-0.5"><span class="text-slate-400 font-bold">% Sodium:</span> <span class="font-mono font-bold text-emerald-600">${d._calc.naPerc.toFixed(1)}%</span></div>
             <div class="flex justify-between border-b border-slate-50 pb-1"><span class="text-slate-400 font-bold">Hydro-Facies:</span> <span class="font-black hover:underline text-indigo-750">${faciesName}</span></div>
             <div class="flex justify-between border-b border-slate-50 pb-1"><span class="text-slate-400 font-bold">USSL Class:</span> <span class="font-black hover:underline text-teal-800">${usslName}</span></div>
           </div>
@@ -2644,6 +2646,7 @@ export default function UsslPiperAnalysisView({
     const ions = ["Ca", "Mg", "Na", "K", "Cl", "SO4", "HCO3", "CO3"];
     const additionalCols = [
       { header: "SAR Value", key: "sar" },
+      { header: "Sodium Percentage (%Na)", key: "naPerc" },
       { header: "USSL Class", key: "ussl" },
       { header: "Hydrochemical Facies", key: "facies" },
       ...ions.map((ion) => ({ header: `${ion} (meq/l)`, key: `meq_${ion}` })),
@@ -2669,6 +2672,7 @@ export default function UsslPiperAnalysisView({
       });
 
       rowObj.sar = Number(item._calc.sar.toFixed(2));
+      rowObj.naPerc = Number(item._calc.naPerc.toFixed(1));
       rowObj.ussl = item._calc.ussl;
       rowObj.facies = faciesNames[item._calc.facies] || item._calc.facies;
 
@@ -4552,6 +4556,7 @@ export default function UsslPiperAnalysisView({
                     <th className="p-3">Location Name</th>
                     <th className="p-3">EC (μS/cm)</th>
                     <th className="p-3">SAR</th>
+                    <th className="p-3">% Sodium</th>
                     <th className="p-3">USSL Class</th>
                     <th className="p-3">Hydro-Facies</th>
                   </tr>
@@ -4573,6 +4578,7 @@ export default function UsslPiperAnalysisView({
                         <td className="p-3 font-bold text-slate-900">{d._calc.locName}</td>
                         <td className="p-3 font-mono text-slate-700 font-bold">{d._calc.ecVal || "-"}</td>
                         <td className="p-3 font-mono text-amber-600 font-bold">{d._calc.sar.toFixed(2)}</td>
+                        <td className="p-3 font-mono text-emerald-600 font-bold">{d._calc.naPerc.toFixed(1)}%</td>
                         <td className="p-3">
                           <span className="px-2 py-0.5 rounded text-[10px] font-black" style={{ backgroundColor: (usslColors[d._calc.ussl] || "#64748b") + "20", color: usslColors[d._calc.ussl] || "#64748b" }}>
                             {d._calc.ussl}

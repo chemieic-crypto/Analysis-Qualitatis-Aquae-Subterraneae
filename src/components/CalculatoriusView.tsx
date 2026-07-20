@@ -18,7 +18,8 @@ import {
   Settings,
   Sliders,
   Activity,
-  Layers
+  Layers,
+  Percent
 } from "lucide-react";
 import { DataHeaders } from "../types";
 
@@ -488,6 +489,34 @@ export const CalculatoriusView: React.FC<CalculatoriusViewProps> = ({
       piColor = "text-amber-600 bg-amber-50 border-amber-100";
     }
 
+    // 7b. % Sodium (Sodium Percentage)
+    const naPercDenom = meq.Ca + meq.Mg + meq.Na + meq.K;
+    const naPercValue = naPercDenom > 0 ? ((meq.Na + meq.K) / naPercDenom) * 100 : 0;
+    const naPercSteps = [
+      `Sodium Percentage (% Na) Formula (Wilcox's):`,
+      `% Na = [(Na⁺ + K⁺) / (Ca²⁺ + Mg²⁺ + Na⁺ + K⁺)] × 100 (concentrations in meq/L)`,
+      `Substituting active values:`,
+      `• Na⁺ = ${meq.Na.toFixed(4)} meq/L`,
+      `• K⁺ = ${meq.K.toFixed(4)} meq/L`,
+      `• Ca²⁺ = ${meq.Ca.toFixed(4)} meq/L`,
+      `• Mg²⁺ = ${meq.Mg.toFixed(4)} meq/L`,
+      `Step 1: Numerator (Na⁺ + K⁺) = ${meq.Na.toFixed(4)} + ${meq.K.toFixed(4)} = ${(meq.Na + meq.K).toFixed(4)} meq/L`,
+      `Step 2: Denominator (Ca²⁺ + Mg²⁺ + Na⁺ + K⁺) = ${naPercDenom.toFixed(4)} meq/L`,
+      `Step 3: Division & Percentage: [ ${(meq.Na + meq.K).toFixed(4)} ÷ ${naPercDenom.toFixed(4)} ] × 100 = ${naPercValue.toFixed(2)}%`
+    ];
+    let naPercStatus = "Excellent";
+    let naPercColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+    if (naPercValue >= 60) {
+      naPercStatus = "Unsuitable";
+      naPercColor = "text-rose-600 bg-rose-50 border-rose-100";
+    } else if (naPercValue >= 40) {
+      naPercStatus = "Permissible";
+      naPercColor = "text-amber-600 bg-amber-50 border-amber-100";
+    } else if (naPercValue >= 20) {
+      naPercStatus = "Good";
+      naPercColor = "text-green-600 bg-green-50 border-green-100";
+    }
+
     // 8. meq% percentages used in Piper Trilinear Plotting
     const catSum = tzPlus || 1;
     const anSum = tzMinus || 1;
@@ -676,6 +705,10 @@ export const CalculatoriusView: React.FC<CalculatoriusViewProps> = ({
       piSteps,
       piStatus,
       piColor,
+      naPercValue,
+      naPercSteps,
+      naPercStatus,
+      naPercColor,
       meqPerc,
       piperSteps,
       facies,
@@ -1038,6 +1071,14 @@ export const CalculatoriusView: React.FC<CalculatoriusViewProps> = ({
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">% Sodium (Wilcox)</p>
+              <p className="text-base font-black text-slate-800 mt-1">{calc.naPercValue.toFixed(1)}%</p>
+              <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-full mt-2 border ${calc.naPercColor}`}>
+                {calc.naPercStatus}
+              </span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">USSL Class</p>
               <p className="text-base font-black text-slate-800 mt-1">{calc.usslClass}</p>
               <span className="inline-block text-[9px] font-black px-1.5 py-0.5 rounded-full mt-2 border text-indigo-600 bg-indigo-50 border-indigo-100">
@@ -1064,7 +1105,8 @@ export const CalculatoriusView: React.FC<CalculatoriusViewProps> = ({
                 { id: "cbe", label: "9. CBE (Charge Balance)", icon: Check },
                 { id: "gibbs", label: "10. Gibbs", icon: TrendingUp },
                 { id: "piper", label: "11. Piper meq%", icon: FileSpreadsheet },
-                { id: "pearson", label: "12. Pearson Coeff", icon: Table }
+                { id: "nasodium", label: "12. % Sodium", icon: Percent },
+                { id: "pearson", label: "13. Pearson Coeff", icon: Table }
               ].map((tab) => {
                 const TabIcon = tab.icon;
                 return (
@@ -1343,6 +1385,165 @@ export const CalculatoriusView: React.FC<CalculatoriusViewProps> = ({
                       <p>Hydrochemical facies represent diagnostic chemical types in the aquifer, revealing weathering minerals, ion exchange, or salinization pathways based on relative cation-anion dominance.</p>
                     </div>
                   </div>
+
+                  {/* SIX PIPER FACIES CLASSES EXAMPLES AND LOGIC */}
+                  <div className="space-y-3 pt-2">
+                    <h5 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                      <Layers className="w-3.5 h-3.5 text-pink-500" />
+                      Detailed Reference of the Six Piper Facies Classes
+                    </h5>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      The central diamond of the Piper trilinear diagram is divided into six distinct quadrants, each representing a distinct geochemical signature of groundwater. Below are the exact mathematical conditions, geological origins, and real-world examples for each facies:
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      {[
+                        {
+                          id: "Ca-Mg-HCO3",
+                          name: "Calcium-Magnesium Bicarbonate type",
+                          shortName: "Ca-Mg-HCO3 Type",
+                          color: "#a855f7", // Purple
+                          bgLight: "bg-purple-50/40",
+                          borderCol: "border-purple-200/60",
+                          textCol: "text-purple-700",
+                          math: "c ≥ 50% and a < 50%",
+                          logic: "Alkaline Earths (Ca + Mg) ≥ 50% & Strong Acids (Cl + SO4) < 50%",
+                          interpretation: "Indicates fresh recharge water with short residence times. Dominated by carbonic acid weathering of limestone (calcite) and dolomite formations.",
+                          example: "Shallow dug wells, mountain springs, pristine upland aquifers."
+                        },
+                        {
+                          id: "Na-Cl",
+                          name: "Sodium Chloride type",
+                          shortName: "Na-Cl Type",
+                          color: "#ec4899", // Pink
+                          bgLight: "bg-pink-50/40",
+                          borderCol: "border-pink-200/60",
+                          textCol: "text-pink-700",
+                          math: "c < 50% and a ≥ 50%",
+                          logic: "Alkaline Earths (Ca + Mg) < 50% & Strong Acids (Cl + SO4) ≥ 50%",
+                          interpretation: "Highly mineralized, saline groundwater. Caused by seawater intrusion, dissolution of halite rock-salt, deep connate fossil water, or extreme arid evaporation.",
+                          example: "Coastal aquifers, desert basins, deep brackish aquifers, marine-impacted estuaries."
+                        },
+                        {
+                          id: "Na-HCO3",
+                          name: "Sodium Bicarbonate type",
+                          shortName: "Na-HCO3 Type",
+                          color: "#06b6d4", // Cyan
+                          bgLight: "bg-cyan-50/40",
+                          borderCol: "border-cyan-200/60",
+                          textCol: "text-cyan-700",
+                          math: "c < 50% and a < 50% and (c+a) < 50%",
+                          logic: "Alkaline Earths < 50% & Strong Acids < 50% & (c + a) < 50%",
+                          interpretation: "Typically alkaline or sodic waters. Found in deeper, stagnant aquifer zones undergoing natural cation exchange where dissolved Ca/Mg are swapped with clay-bound Na+.",
+                          example: "Confined sandstone layers, deep alluvial soft aquifers."
+                        },
+                        {
+                          id: "Ca-Cl",
+                          name: "Calcium Chloride type",
+                          shortName: "Ca-Cl Type",
+                          color: "#eab308", // Golden yellow
+                          bgLight: "bg-yellow-50/40",
+                          borderCol: "border-yellow-200/60",
+                          textCol: "text-yellow-700",
+                          math: "c ≥ 50% and a ≥ 50% and (c+a) ≥ 150%",
+                          logic: "Alkaline Earths ≥ 50% & Strong Acids ≥ 50% & (c + a) ≥ 150%",
+                          interpretation: "Represents concentrated geogenic brines or deep aquifers undergoing reverse ion exchange (dissolved Na+ is replaced by Ca2+ from aquifer silicate/clay matrices).",
+                          example: "Ultra-deep geological brine reserves, geothermal springs, fractured bedrock systems."
+                        },
+                        {
+                          id: "Mixed-A",
+                          name: "Mixed Cation-Anion Type A",
+                          shortName: "Mixed Type A",
+                          color: "#10b981", // Emerald
+                          bgLight: "bg-emerald-50/40",
+                          borderCol: "border-emerald-200/60",
+                          textCol: "text-emerald-700",
+                          math: "c ≥ 50% and a ≥ 50% and (c+a) < 150%",
+                          logic: "Alkaline Earths ≥ 50% & Strong Acids ≥ 50% & (c + a) < 150%",
+                          interpretation: "Transitional zone. Alkaline earths are high, but paired with substantial strong acids (Cl+SO4). Strongly suggests physical mixing of two distinct groundwater sources.",
+                          example: "Intermediate flowpaths, mixing zones between shallow carbonate and deep saline aquifers."
+                        },
+                        {
+                          id: "Mixed-B",
+                          name: "Mixed Cation-Anion Type B",
+                          shortName: "Mixed Type B",
+                          color: "#ef4444", // Rose
+                          bgLight: "bg-rose-50/40",
+                          borderCol: "border-rose-200/60",
+                          textCol: "text-rose-700",
+                          math: "c < 50% and a < 50% and (c+a) ≥ 50%",
+                          logic: "Alkaline Earths < 50% & Strong Acids < 50% & (c + a) ≥ 50%",
+                          interpretation: "Transitional zone with high alkali cations (Na + K) but balanced with mixed bicarbonate and strong acid anions. Typical of weathered silicate rock pathways.",
+                          example: "Weathered granitic and basaltic terrains, middle reaches of active river systems."
+                        }
+                      ].map((cls) => {
+                        const isCurrent = calc.facies.toLowerCase().includes(cls.id.toLowerCase()) || 
+                                          calc.facies.toLowerCase().includes(cls.shortName.toLowerCase().replace(" type", "")) ||
+                                          (cls.id === "Ca-Mg-HCO3" && calc.facies.toLowerCase().includes("bicarbonate"));
+                        return (
+                          <div
+                            key={cls.id}
+                            className={`p-3.5 rounded-2xl border transition-all ${
+                              isCurrent
+                                ? "bg-white shadow-md ring-2 ring-indigo-500 scale-[1.01]"
+                                : `${cls.bgLight} ${cls.borderCol} hover:bg-white hover:shadow-xs`
+                            }`}
+                            style={{ borderColor: isCurrent ? cls.color : undefined }}
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div>
+                                <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block mb-0.5">
+                                  Facies Class
+                                </span>
+                                <h6 className="text-xs font-black text-slate-800 leading-tight">
+                                  {cls.name}
+                                </h6>
+                              </div>
+                              <span
+                                className="px-2 py-0.5 rounded-md text-[9px] font-black shrink-0 text-white shadow-3xs"
+                                style={{ backgroundColor: cls.color }}
+                              >
+                                {cls.shortName}
+                              </span>
+                            </div>
+
+                            <div className="space-y-2 mt-2.5">
+                              <div className="flex flex-col gap-1 bg-white/70 p-2 rounded-lg border border-slate-100/80 font-mono text-[9px] text-slate-600">
+                                <div>
+                                  <span className="font-bold text-slate-500">Mathematical:</span> <span className="font-semibold text-slate-800">{cls.math}</span>
+                                </div>
+                                <div className="leading-normal">
+                                  <span className="font-bold text-slate-500">Chemical Logic:</span> <span className="font-semibold text-slate-700">{cls.logic}</span>
+                                </div>
+                              </div>
+
+                              <div className="text-[10px] text-slate-600 leading-relaxed font-medium">
+                                <span className="font-extrabold text-slate-700 block mb-0.5">Hydrogeological Origin:</span>
+                                {cls.interpretation}
+                              </div>
+
+                              <div className="text-[10px] text-slate-600 leading-relaxed font-medium">
+                                <span className="font-extrabold text-slate-700 block mb-0.5">Real-World Examples:</span>
+                                <span className="text-slate-500 italic">{cls.example}</span>
+                              </div>
+
+                              {isCurrent && (
+                                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-indigo-600 uppercase tracking-wider animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                                    Current Sample Match
+                                  </span>
+                                  <span className="text-[9px] font-bold text-slate-500">
+                                    c = {(calc.meqPerc.Ca + calc.meqPerc.Mg).toFixed(1)}% | a = {(calc.meqPerc.Cl + calc.meqPerc.SO4).toFixed(1)}%
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1446,7 +1647,40 @@ export const CalculatoriusView: React.FC<CalculatoriusViewProps> = ({
                 </div>
               )}
 
-              {/* TAB 12: Pearson Correlation Matrix */}
+              {/* TAB 12: % Sodium (Percent Sodium) */}
+              {activeTab === "nasodium" && (
+                <div className="space-y-4">
+                  <h4 className="font-bold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <Percent className="w-4 h-4 text-emerald-500" />
+                    Sodium Percentage (% Na) Step-by-Step
+                  </h4>
+
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 font-mono text-xs text-slate-700 space-y-2">
+                    {calc.naPercSteps.map((step, idx) => (
+                      <p key={idx} className={idx === 0 ? "text-indigo-600 font-bold" : idx === 3 ? "font-bold text-emerald-600" : ""}>{step}</p>
+                    ))}
+                  </div>
+
+                  <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-start gap-3">
+                    <Info className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                    <div className="text-xs text-emerald-800 leading-relaxed font-medium">
+                      <p className="font-bold mb-1">Sodium Hazard in Agricultural Soils:</p>
+                      <p className="mb-2">
+                        Sodium percentage is widely used in evaluating the suitability of groundwater for irrigation (Wilcox, 1955). High sodium content in irrigation water can cause soil structure degradation, reducing water permeability and aeration.
+                      </p>
+                      <p className="font-bold">Wilcox Classification Standard:</p>
+                      <ul className="list-disc pl-5 space-y-0.5 mt-1 font-mono text-[10px]">
+                        <li>&lt; 20% : Excellent (Highly Safe)</li>
+                        <li>20% to 40% : Good (Safe)</li>
+                        <li>40% to 60% : Permissible (Use with caution in well-drained soils)</li>
+                        <li>&ge; 60% : Unsuitable (Severe hazard)</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 13: Pearson Correlation Matrix */}
               {activeTab === "pearson" && (
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">

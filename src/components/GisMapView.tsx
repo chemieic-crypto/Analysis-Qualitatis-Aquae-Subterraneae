@@ -1740,6 +1740,7 @@ export default function GisMapView({
     const so4Col = findHeader("SO4", ["so4", "sulphate", "sulfate"]);
     const ecCol = findHeader("EC", ["ec", "electrical conductivity", "conductivity"]);
     const tdsCol = findHeader("TDS", ["tds", "total dissolved solids"]);
+    const alkCol = findHeader("Alkalinity", ["alkalinity", "total alkalinity", "alk"]);
 
     // Filter raw data by selected state if active
     let filteredRaw = rawData;
@@ -1846,6 +1847,25 @@ export default function GisMapView({
         rscVal = (meq.HCO3 + meq.CO3) - (meq.Ca + meq.Mg);
       }
 
+      const directTds = getNum(tdsCol);
+      const directEc = getNum(ecCol);
+      const tdsVal = directTds !== null ? directTds : (directEc !== null ? directEc * 0.65 : 0);
+
+      const directAlk = getNum(alkCol);
+      const alkVal = directAlk !== null ? directAlk : (safeVal(hco3) / 61.02 + safeVal(co3) / 30.0) * 50;
+
+      const naPercDenom = meq.Ca + meq.Mg + meq.Na + meq.K;
+      const sspVal = naPercDenom > 0 ? ((meq.Na + meq.K) / naPercDenom) * 100 : 0;
+
+      const piDenom = meq.Ca + meq.Mg + meq.Na;
+      const piVal = piDenom > 0 ? ((meq.Na + Math.sqrt(meq.HCO3)) * 100) / piDenom : 0;
+
+      const krDenom = meq.Ca + meq.Mg;
+      const krVal = krDenom > 0 ? meq.Na / krDenom : 0;
+
+      const mhDenom = meq.Ca + meq.Mg;
+      const mhVal = mhDenom > 0 ? (meq.Mg * 100) / mhDenom : 0;
+
       return {
         ...row,
         lat,
@@ -1857,6 +1877,13 @@ export default function GisMapView({
         rawSeason,
         SAR: sarVal !== null ? parseFloat(sarVal.toFixed(2)) : undefined,
         RSC: rscVal !== null ? parseFloat(rscVal.toFixed(2)) : undefined,
+        TDS: tdsVal !== null ? parseFloat(tdsVal.toFixed(2)) : undefined,
+        Alkalinity: alkVal !== null ? parseFloat(alkVal.toFixed(2)) : undefined,
+        SSP: sspVal !== null ? parseFloat(sspVal.toFixed(2)) : undefined,
+        "Na%": sspVal !== null ? parseFloat(sspVal.toFixed(2)) : undefined,
+        PI: piVal !== null ? parseFloat(piVal.toFixed(2)) : undefined,
+        KR: krVal !== null ? parseFloat(krVal.toFixed(2)) : undefined,
+        MH: mhVal !== null ? parseFloat(mhVal.toFixed(2)) : undefined,
       };
     }).filter(row => !isNaN(row.lat) && !isNaN(row.lng));
   }, [rawData, headers, headerMap, selectedState]);
@@ -1937,7 +1964,26 @@ export default function GisMapView({
     // Exclude HCO3, CO3, Na, and K from GIS Map section
     const excludeKeys = ["hco3", "co3", "na", "k"];
     params = params.filter(p => !excludeKeys.includes(p.toLowerCase()));
-    return [...params, "STATIONS"];
+
+    // Ensure all calculated agricultural & hazard parameters are always listed
+    const extraParams = ["SAR", "RSC", "TDS", "Alkalinity", "SSP", "Na%", "PI", "KR", "MH"];
+    extraParams.forEach(ep => {
+      if (!params.some(p => p.toLowerCase() === ep.toLowerCase())) {
+        params.push(ep);
+      }
+    });
+
+    const finalParams: string[] = [];
+    const seen = new Set<string>();
+    params.forEach(p => {
+      const upper = p.toUpperCase();
+      if (!seen.has(upper)) {
+        seen.add(upper);
+        finalParams.push(p);
+      }
+    });
+
+    return [...finalParams, "STATIONS"];
   }, [parsedData]);
 
   useEffect(() => {
@@ -1950,7 +1996,16 @@ export default function GisMapView({
     if (selectedParam === "STATIONS") {
       return { b1: 0, b2: 0, unit: "", name: "Ground Water Quality Monitoring Station", keywords: [] };
     }
-    return PARAM_CONFIG[selectedParam] || { b1: 1, b2: 10, unit: "mg/L", name: selectedParam, keywords: [] };
+    const virtualConfigs: Record<string, { b1: number; b2: number; unit: string; name: string; keywords: string[] }> = {
+      SAR: { b1: 10, b2: 18, unit: "Ratio", name: "Sodium Adsorption Ratio (SAR)", keywords: [] },
+      RSC: { b1: 1.25, b2: 2.5, unit: "meq/L", name: "Residual Sodium Carbonate (RSC)", keywords: [] },
+      SSP: { b1: 40, b2: 60, unit: "%", name: "Soluble Sodium Percentage (SSP)", keywords: [] },
+      "Na%": { b1: 40, b2: 60, unit: "%", name: "Sodium Percentage (%Na)", keywords: [] },
+      PI: { b1: 25, b2: 75, unit: "%", name: "Permeability Index (PI)", keywords: [] },
+      KR: { b1: 1.0, b2: 2.0, unit: "Ratio", name: "Kelly's Ratio (KR)", keywords: [] },
+      MH: { b1: 50, b2: 50, unit: "%", name: "Magnesium Hazard (MH)", keywords: [] }
+    };
+    return PARAM_CONFIG[selectedParam] || virtualConfigs[selectedParam] || { b1: 1, b2: 10, unit: "mg/L", name: selectedParam, keywords: [] };
   }, [selectedParam]);
 
   const getMapDefaultTitleAndSubtitle = useCallback((side: "left" | "right") => {

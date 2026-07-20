@@ -93,6 +93,18 @@ interface DetailedViewProps {
   setLayers?: React.Dispatch<React.SetStateAction<ShapefileLayer[]>>;
 }
 
+const VIRTUAL_CONFIGS: Record<string, { b1: number; b2: number; unit: string; name: string; perm: number }> = {
+  SAR: { b1: 10, b2: 18, unit: "Ratio", name: "Sodium Adsorption Ratio (SAR)", perm: 0 },
+  RSC: { b1: 1.25, b2: 2.5, unit: "meq/L", name: "Residual Sodium Carbonate (RSC)", perm: 0 },
+  SSP: { b1: 40, b2: 60, unit: "%", name: "Soluble Sodium Percentage (SSP)", perm: 0 },
+  "Na%": { b1: 40, b2: 60, unit: "%", name: "Sodium Percentage (%Na)", perm: 0 },
+  PI: { b1: 25, b2: 75, unit: "%", name: "Permeability Index (PI)", perm: 0 },
+  KR: { b1: 1.0, b2: 2.0, unit: "Ratio", name: "Kelly's Ratio (KR)", perm: 0 },
+  MH: { b1: 50, b2: 50, unit: "%", name: "Magnesium Hazard (MH)", perm: 0 },
+  TDS: { b1: 500, b2: 2000, unit: "mg/l", name: "Total Dissolved Solids (TDS)", perm: 0 },
+  Alkalinity: { b1: 200, b2: 600, unit: "mg/l", name: "Total Alkalinity", perm: 0 }
+};
+
 export default function DetailedView({
   rawData,
   headers,
@@ -186,13 +198,93 @@ export default function DetailedView({
   const [fontBold, setFontBold] = useState(true);
   const [colorAcc, setColorAcc] = useState("#10b981");
 
-  // Filter out Na, K, HCO3, CO3 from detailed views (parameters without BIS limits)
+  const getParamVal = React.useCallback((row: any, paramName: string): number => {
+    const isVirtual = ["SAR", "RSC", "SSP", "Na%", "PI", "KR", "MH", "TDS", "Alkalinity"].includes(paramName);
+    if (isVirtual) {
+      // First check if there is an actual Excel column mapped to the parameter
+      const excelCol = headerMap[paramName];
+      if (excelCol && row[excelCol] !== undefined && row[excelCol] !== null) {
+        const parsedVal = parseFloat(row[excelCol]);
+        if (!isNaN(parsedVal)) return parsedVal;
+      }
+      
+      const caCol = Object.keys(headerMap).find(k => headerMap[k] === "Ca") || "Ca";
+      const mgCol = Object.keys(headerMap).find(k => headerMap[k] === "Mg") || "Mg";
+      const naCol = Object.keys(headerMap).find(k => headerMap[k] === "Na") || "Na";
+      const kCol = Object.keys(headerMap).find(k => headerMap[k] === "K") || "K";
+      const hco3Col = Object.keys(headerMap).find(k => headerMap[k] === "HCO3") || "HCO3";
+      const co3Col = Object.keys(headerMap).find(k => headerMap[k] === "CO3") || "CO3";
+      const ecCol = Object.keys(headerMap).find(k => headerMap[k] === "EC") || "EC";
+      const tdsCol = Object.keys(headerMap).find(k => headerMap[k] === "TDS") || "TDS";
+      const alkCol = Object.keys(headerMap).find(k => headerMap[k] === "Alkalinity") || "Alkalinity";
+      
+      const caVal = parseFloat(row[caCol]);
+      const mgVal = parseFloat(row[mgCol]);
+      const naVal = parseFloat(row[naCol]);
+      const kVal = parseFloat(row[kCol]) || 0;
+      const hco3Val = parseFloat(row[hco3Col]);
+      const co3Val = parseFloat(row[co3Col]) || 0;
+      const ecVal = parseFloat(row[ecCol]);
+      const tdsVal = parseFloat(row[tdsCol]);
+      const alkVal = parseFloat(row[alkCol]);
+
+      const caMeq = !isNaN(caVal) ? caVal / 20.04 : 0;
+      const mgMeq = !isNaN(mgVal) ? mgVal / 12.15 : 0;
+      const naMeq = !isNaN(naVal) ? naVal / 22.99 : 0;
+      const kMeq = !isNaN(kVal) ? kVal / 39.10 : 0;
+      const hco3Meq = !isNaN(hco3Val) ? hco3Val / 61.02 : 0;
+      const co3Meq = co3Val / 30.00;
+
+      if (paramName === "SAR") {
+        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
+          const denom = Math.sqrt((caMeq + mgMeq) / 2);
+          return denom > 0 ? naMeq / denom : NaN;
+        }
+      } else if (paramName === "RSC") {
+        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(hco3Val)) {
+          return hco3Meq + co3Meq - (caMeq + mgMeq);
+        }
+      } else if (paramName === "TDS") {
+        if (!isNaN(tdsVal)) return tdsVal;
+        if (!isNaN(ecVal)) return ecVal * 0.65;
+      } else if (paramName === "Alkalinity") {
+        if (!isNaN(alkVal)) return alkVal;
+        if (!isNaN(hco3Val)) return (hco3Meq + co3Meq) * 50;
+      } else if (paramName === "SSP" || paramName === "Na%") {
+        const sum = caMeq + mgMeq + naMeq + kMeq;
+        if (sum > 0) return ((naMeq + kMeq) * 100) / sum;
+      } else if (paramName === "PI") {
+        const denom = caMeq + mgMeq + naMeq;
+        if (denom > 0) return ((naMeq + Math.sqrt(hco3Meq)) * 100) / denom;
+      } else if (paramName === "KR") {
+        const denom = caMeq + mgMeq;
+        if (denom > 0) return naMeq / denom;
+      } else if (paramName === "MH") {
+        const denom = caMeq + mgMeq;
+        if (denom > 0) return (mgMeq * 100) / denom;
+      }
+      return NaN;
+    } else {
+      const realCol = headerMap[paramName] || paramName;
+      return parseFloat(row[realCol] || row[paramName]);
+    }
+  }, [headerMap]);
+
+  // Filter out Na, K, HCO3, CO3 from detailed views (parameters without BIS limits) and include virtual/calculated parameters
   const availableParams = React.useMemo(() => {
     if (!headers || !headers.params) return [];
-    return headers.params.filter(p => {
+    const base = headers.params.filter(p => {
       const paramId = headerMap[p] || p;
       return !["Na", "K", "HCO3", "CO3"].includes(paramId);
     });
+
+    const extras = ["Alkalinity", "SAR", "RSC", "SSP", "Na%", "PI", "KR", "MH", "TDS"];
+    extras.forEach(ext => {
+      if (!base.includes(ext)) {
+        base.push(ext);
+      }
+    });
+    return base;
   }, [headers, headerMap]);
   const [colorPerm, setColorPerm] = useState("#f59e0b");
   const [colorFail, setColorFail] = useState("#f43f5e");
@@ -212,7 +304,7 @@ export default function DetailedView({
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const activeConfigKey = activeParam === "SAR" ? "SAR" : activeParam === "RSC" ? "RSC" : (headerMap[activeParam] || "");
-  const activeConfig = PARAM_CONFIG[activeConfigKey] || PARAM_CONFIG[activeParam];
+  const activeConfig = PARAM_CONFIG[activeConfigKey] || PARAM_CONFIG[activeParam] || VIRTUAL_CONFIGS[activeParam] || { b1: 0, b2: 0, unit: "units", perm: 0, name: activeParam };
 
   // Tab state for additional statistical charts
   const [statTab, setStatTab] = useState<"boxplot" | "average" | "violin" | "donut" | "ogive">("boxplot");
@@ -261,42 +353,22 @@ export default function DetailedView({
   const isGroupAffected = (samples: any[]) => {
     if (!samples || samples.length === 0) return false;
     return samples.some(row => {
-      let val = NaN;
-      if (activeParam === "SAR" || activeParam === "RSC") {
-        const caCol = Object.keys(headerMap).find(k => headerMap[k] === "Ca") || "Ca";
-        const mgCol = Object.keys(headerMap).find(k => headerMap[k] === "Mg") || "Mg";
-        const naCol = Object.keys(headerMap).find(k => headerMap[k] === "Na") || "Na";
-        const hco3Col = Object.keys(headerMap).find(k => headerMap[k] === "HCO3") || "HCO3";
-        const co3Col = Object.keys(headerMap).find(k => headerMap[k] === "CO3") || "CO3";
-
-        const caVal = parseFloat(row[caCol]);
-        const mgVal = parseFloat(row[mgCol]);
-        const naVal = parseFloat(row[naCol]);
-        const hco3Val = parseFloat(row[hco3Col]);
-        const co3Val = parseFloat(row[co3Col]) || 0;
-
-        const caMeq = !isNaN(caVal) ? caVal / 20.04 : 0;
-        const mgMeq = !isNaN(mgVal) ? mgVal / 12.15 : 0;
-        const naMeq = !isNaN(naVal) ? naVal / 22.99 : 0;
-        const hco3Meq = !isNaN(hco3Val) ? hco3Val / 61.02 : 0;
-        const co3Meq = co3Val / 30.00;
-
-        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
-          if (activeParam === "SAR") {
-            const denom = Math.sqrt((caMeq + mgMeq) / 2);
-            if (denom > 0) val = naMeq / denom;
-          } else {
-            val = (hco3Meq + co3Meq) - (caMeq + mgMeq);
-          }
-        }
-      } else {
-        val = parseFloat(row[activeParam]);
-      }
+      let val = getParamVal(row, activeParam);
 
       if (isNaN(val)) return false;
 
       if (activeParam === "SAR") {
         return val > 26;
+      } else if (activeParam === "RSC") {
+        return val > 2.5;
+      } else if (activeParam === "SSP" || activeParam === "Na%") {
+        return val > 60;
+      } else if (activeParam === "PI") {
+        return val < 25;
+      } else if (activeParam === "KR") {
+        return val > 1.0;
+      } else if (activeParam === "MH") {
+        return val > 50;
       } else if (activeConfigKey === "pH") {
         return val < activeConfig.b1 || val > activeConfig.b2;
       } else if (activeConfig.b1 === activeConfig.b2) {
@@ -381,37 +453,7 @@ export default function DetailedView({
         sName = rawY;
       }
 
-      let val = NaN;
-      if (activeParam === "SAR" || activeParam === "RSC") {
-        const caCol = Object.keys(headerMap).find(k => headerMap[k] === "Ca") || "Ca";
-        const mgCol = Object.keys(headerMap).find(k => headerMap[k] === "Mg") || "Mg";
-        const naCol = Object.keys(headerMap).find(k => headerMap[k] === "Na") || "Na";
-        const hco3Col = Object.keys(headerMap).find(k => headerMap[k] === "HCO3") || "HCO3";
-        const co3Col = Object.keys(headerMap).find(k => headerMap[k] === "CO3") || "CO3";
-
-        const caVal = parseFloat(row[caCol]);
-        const mgVal = parseFloat(row[mgCol]);
-        const naVal = parseFloat(row[naCol]);
-        const hco3Val = parseFloat(row[hco3Col]);
-        const co3Val = parseFloat(row[co3Col]) || 0;
-
-        const caMeq = !isNaN(caVal) ? caVal / 20.04 : 0;
-        const mgMeq = !isNaN(mgVal) ? mgVal / 12.15 : 0;
-        const naMeq = !isNaN(naVal) ? naVal / 22.99 : 0;
-        const hco3Meq = !isNaN(hco3Val) ? hco3Val / 61.02 : 0;
-        const co3Meq = co3Val / 30.00;
-
-        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
-          if (activeParam === "SAR") {
-            const denom = Math.sqrt((caMeq + mgMeq) / 2);
-            if (denom > 0) val = naMeq / denom;
-          } else {
-            val = (hco3Meq + co3Meq) - (caMeq + mgMeq);
-          }
-        }
-      } else {
-        val = parseFloat(row[activeParam]);
-      }
+      let val = getParamVal(row, activeParam);
 
       if (!isNaN(val)) {
         if (!results[sName]) {
@@ -477,37 +519,7 @@ export default function DetailedView({
 
       const pKey = getPeriodKey(row);
 
-      let val = NaN;
-      if (activeParam === "SAR" || activeParam === "RSC") {
-        const caCol = Object.keys(headerMap).find(k => headerMap[k] === "Ca") || "Ca";
-        const mgCol = Object.keys(headerMap).find(k => headerMap[k] === "Mg") || "Mg";
-        const naCol = Object.keys(headerMap).find(k => headerMap[k] === "Na") || "Na";
-        const hco3Col = Object.keys(headerMap).find(k => headerMap[k] === "HCO3") || "HCO3";
-        const co3Col = Object.keys(headerMap).find(k => headerMap[k] === "CO3") || "CO3";
-
-        const caVal = parseFloat(row[caCol]);
-        const mgVal = parseFloat(row[mgCol]);
-        const naVal = parseFloat(row[naCol]);
-        const hco3Val = parseFloat(row[hco3Col]);
-        const co3Val = parseFloat(row[co3Col]) || 0;
-
-        const caMeq = !isNaN(caVal) ? caVal / 20.04 : 0;
-        const mgMeq = !isNaN(mgVal) ? mgVal / 12.15 : 0;
-        const naMeq = !isNaN(naVal) ? naVal / 22.99 : 0;
-        const hco3Meq = !isNaN(hco3Val) ? hco3Val / 61.02 : 0;
-        const co3Meq = co3Val / 30.00;
-
-        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
-          if (activeParam === "SAR") {
-            const denom = Math.sqrt((caMeq + mgMeq) / 2);
-            if (denom > 0) val = naMeq / denom;
-          } else {
-            val = (hco3Meq + co3Meq) - (caMeq + mgMeq);
-          }
-        }
-      } else {
-        val = parseFloat(row[activeParam]);
-      }
+      let val = getParamVal(row, activeParam);
 
       if (!isNaN(val)) {
         if (!groupPeriodVals[gName]) {
@@ -1401,37 +1413,7 @@ export default function DetailedView({
       }
       groups[gName].samples.push(row);
 
-      let val = NaN;
-      if (activeParam === "SAR" || activeParam === "RSC") {
-        const caCol = Object.keys(headerMap).find(k => headerMap[k] === "Ca") || "Ca";
-        const mgCol = Object.keys(headerMap).find(k => headerMap[k] === "Mg") || "Mg";
-        const naCol = Object.keys(headerMap).find(k => headerMap[k] === "Na") || "Na";
-        const hco3Col = Object.keys(headerMap).find(k => headerMap[k] === "HCO3") || "HCO3";
-        const co3Col = Object.keys(headerMap).find(k => headerMap[k] === "CO3") || "CO3";
-
-        const caVal = parseFloat(row[caCol]);
-        const mgVal = parseFloat(row[mgCol]);
-        const naVal = parseFloat(row[naCol]);
-        const hco3Val = parseFloat(row[hco3Col]);
-        const co3Val = parseFloat(row[co3Col]) || 0;
-
-        const caMeq = !isNaN(caVal) ? caVal / 20.04 : 0;
-        const mgMeq = !isNaN(mgVal) ? mgVal / 12.15 : 0;
-        const naMeq = !isNaN(naVal) ? naVal / 22.99 : 0;
-        const hco3Meq = !isNaN(hco3Val) ? hco3Val / 61.02 : 0;
-        const co3Meq = co3Val / 30.00;
-
-        if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
-          if (activeParam === "SAR") {
-            const denom = Math.sqrt((caMeq + mgMeq) / 2);
-            if (denom > 0) val = naMeq / denom;
-          } else {
-            val = (hco3Meq + co3Meq) - (caMeq + mgMeq);
-          }
-        }
-      } else {
-        val = parseFloat(row[activeParam]);
-      }
+      let val = getParamVal(row, activeParam);
 
       if (!isNaN(val)) {
         allNumericVals.push(val);
@@ -1441,6 +1423,25 @@ export default function DetailedView({
           else if (val <= 18) globalSarS2++;
           else if (val < 26) globalSarS3++;
           else globalSarS4++;
+        } else if (activeParam === "RSC") {
+          if (val <= 1.25) globalAcc++;
+          else if (val <= 2.5) globalPerm++;
+          else globalFail++;
+        } else if (activeParam === "SSP" || activeParam === "Na%") {
+          if (val <= 40) globalAcc++;
+          else if (val <= 60) globalPerm++;
+          else globalFail++;
+        } else if (activeParam === "PI") {
+          if (val > 75) globalAcc++;
+          else if (val >= 25) globalPerm++;
+          else globalFail++;
+        } else if (activeParam === "KR") {
+          if (val <= 1.0) globalAcc++;
+          else if (val <= 2.0) globalPerm++;
+          else globalFail++;
+        } else if (activeParam === "MH") {
+          if (val <= 50) globalAcc++;
+          else globalFail++;
         } else if (activeConfigKey === "pH") {
           if (val >= activeConfig.b1 && val <= activeConfig.b2) globalAcc++;
           else globalFail++;
@@ -1456,39 +1457,7 @@ export default function DetailedView({
     });
 
     const getValsOfSamples = (samples: any[]) => {
-      return samples.map((row) => {
-        if (activeParam === "SAR" || activeParam === "RSC") {
-          const caCol = Object.keys(headerMap).find(k => headerMap[k] === "Ca") || "Ca";
-          const mgCol = Object.keys(headerMap).find(k => headerMap[k] === "Mg") || "Mg";
-          const naCol = Object.keys(headerMap).find(k => headerMap[k] === "Na") || "Na";
-          const hco3Col = Object.keys(headerMap).find(k => headerMap[k] === "HCO3") || "HCO3";
-          const co3Col = Object.keys(headerMap).find(k => headerMap[k] === "CO3") || "CO3";
-
-          const caVal = parseFloat(row[caCol]);
-          const mgVal = parseFloat(row[mgCol]);
-          const naVal = parseFloat(row[naCol]);
-          const hco3Val = parseFloat(row[hco3Col]);
-          const co3Val = parseFloat(row[co3Col]) || 0;
-
-          const caMeq = !isNaN(caVal) ? caVal / 20.04 : 0;
-          const mgMeq = !isNaN(mgVal) ? mgVal / 12.15 : 0;
-          const naMeq = !isNaN(naVal) ? naVal / 22.99 : 0;
-          const hco3Meq = !isNaN(hco3Val) ? hco3Val / 61.02 : 0;
-          const co3Meq = co3Val / 30.00;
-
-          if (!isNaN(caVal) && !isNaN(mgVal) && !isNaN(naVal)) {
-            if (activeParam === "SAR") {
-              const denom = Math.sqrt((caMeq + mgMeq) / 2);
-              return denom > 0 ? naMeq / denom : NaN;
-            } else {
-              return (hco3Meq + co3Meq) - (caMeq + mgMeq);
-            }
-          }
-          return NaN;
-        } else {
-          return parseFloat(row[activeParam]);
-        }
-      }).filter(v => !isNaN(v));
+      return samples.map((row) => getParamVal(row, activeParam)).filter(v => !isNaN(v));
     };
 
     const calculatePeriodStats = (vals: number[]) => {
@@ -1507,6 +1476,25 @@ export default function DetailedView({
           else if (v <= 18) nSarS2++;
           else if (v < 26) nSarS3++;
           else nSarS4++;
+        } else if (activeParam === "RSC") {
+          if (v <= 1.25) nAcc++;
+          else if (v <= 2.5) nPerm++;
+          else nFail++;
+        } else if (activeParam === "SSP" || activeParam === "Na%") {
+          if (v <= 40) nAcc++;
+          else if (v <= 60) nPerm++;
+          else nFail++;
+        } else if (activeParam === "PI") {
+          if (v > 75) nAcc++;
+          else if (v >= 25) nPerm++;
+          else nFail++;
+        } else if (activeParam === "KR") {
+          if (v <= 1.0) nAcc++;
+          else if (v <= 2.0) nPerm++;
+          else nFail++;
+        } else if (activeParam === "MH") {
+          if (v <= 50) nAcc++;
+          else nFail++;
         } else if (activeConfigKey === "pH") {
           if (v >= activeConfig.b1 && v <= activeConfig.b2) nAcc++;
           else nFail++;
@@ -2241,10 +2229,23 @@ export default function DetailedView({
   if (!activeConfig) return null;
 
   const totalAnalyzed = grandTotalRow ? grandTotalRow.total : 0;
-  const safeCount = grandTotalRow ? grandTotalRow.nAcc : 0;
+  const safeCount = grandTotalRow ? (
+    activeParam === "SAR"
+      ? (grandTotalRow.nSarS1 + grandTotalRow.nSarS2 + grandTotalRow.nSarS3)
+      : (activeParam === "MH"
+          ? grandTotalRow.nAcc
+          : (["RSC", "SSP", "Na%", "PI", "KR", "TDS", "Alkalinity"].includes(activeParam)
+              ? (grandTotalRow.nAcc + grandTotalRow.nPerm)
+              : grandTotalRow.nAcc
+            )
+        )
+  ) : 0;
   const limitsCheckAndUnits = activeConfigKey === "pH" 
     ? `${activeConfig.b1} - ${activeConfig.b2}` 
-    : `≤ ${activeConfig.b2} ${activeConfig.unit}`;
+    : (activeParam === "SAR"
+        ? "≤ 26 Ratio"
+        : `≤ ${activeConfig.b2} ${activeConfig.unit}`
+      );
 
   return (
     <div className="space-y-6">
@@ -2592,11 +2593,31 @@ export default function DetailedView({
             onChange={(e) => setActiveParam(e.target.value)}
             className="w-full glossy-input bg-indigo-50/30 rounded-xl p-3 font-bold text-indigo-800 cursor-pointer"
           >
-            {availableParams.map((p, idx) => (
-              <option key={idx} value={p}>{p}</option>
-            ))}
-            <option value="SAR">Sodium Adsorption Ratio (SAR)</option>
-            <option value="RSC">Residual Sodium Carbonate (RSC)</option>
+            {(() => {
+              const extraNames: Record<string, string> = {
+                Alkalinity: "Total Alkalinity (Alkalinity)",
+                SAR: "Sodium Adsorption Ratio (SAR)",
+                RSC: "Residual Sodium Carbonate (RSC)",
+                SSP: "Soluble Sodium Percentage (SSP)",
+                "Na%": "Sodium Percentage (%Na)",
+                PI: "Permeability Index (PI)",
+                KR: "Kelly's Ratio (KR)",
+                MH: "Magnesium Hazard (MH)",
+                TDS: "Total Dissolved Solids (TDS)"
+              };
+              
+              const rendered = new Set<string>();
+              return availableParams.map((p, idx) => {
+                if (rendered.has(p)) return null;
+                rendered.add(p);
+                const label = extraNames[p] || p;
+                return (
+                  <option key={idx} value={p}>
+                    {label}
+                  </option>
+                );
+              }).filter(Boolean);
+            })()}
           </select>
         </div>
 

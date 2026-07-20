@@ -61,6 +61,7 @@ export interface ProcessedSample {
   _calc: {
     sl: number;
     sar: number;
+    naPerc: number;
     ussl: string;
     facies: string;
     tds: number;
@@ -172,6 +173,8 @@ export const processAquiferData = (
       }
     }
 
+    const naPerc = catSumReal > 0 ? ((meq.Na + meq.K) / catSumReal) * 100 : 0;
+
     const tds = tdsInput !== null ? tdsInput : (ec !== null ? ec * 0.65 : 0);
     const gibbsCation = catSumReal > 0 ? (meq.Na + meq.K) / (meq.Na + meq.K + meq.Ca || 1) : NaN;
     const gibbsAnion = anSumReal > 0 ? meq.Cl / (meq.Cl + meq.HCO3 || 1) : NaN;
@@ -207,6 +210,7 @@ export const processAquiferData = (
       _calc: {
         sl: index + 1,
         sar,
+        naPerc,
         ussl,
         facies,
         tds,
