@@ -136,6 +136,8 @@ async function ensureBase64Image(src: string): Promise<string> {
           canvas.height = img.naturalHeight || img.height || 600;
           const ctx = canvas.getContext("2d");
           if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
             ctx.drawImage(img, 0, 0);
             resolve(canvas.toDataURL("image/png"));
             return;
@@ -159,6 +161,7 @@ async function ensureBase64Image(src: string): Promise<string> {
 
 /**
  * Bulletproof SVG conversion to PNG data URL that works in all sandboxed environments.
+ * Optimized for crystal clear 600+ DPI chart & map rasterization in DOCX reports.
  */
 async function convertSvgToPngDataUrl(svgString: string, fallbackDataUrl: string, targetW: number, targetH: number): Promise<string> {
   return new Promise<string>((resolve) => {
@@ -170,6 +173,11 @@ async function convertSvgToPngDataUrl(svgString: string, fallbackDataUrl: string
       parsedSvg = parsedSvg.replace(/href=/g, 'xlink:href=');
     }
 
+    // Inject SVG rendering quality hints if missing
+    if (parsedSvg && !parsedSvg.includes("text-rendering")) {
+      parsedSvg = parsedSvg.replace(/<svg/i, `<svg style="text-rendering: geometricPrecision; shape-rendering: geometricPrecision; image-rendering: high-quality;"`);
+    }
+
     const canvas = document.createElement("canvas");
     canvas.width = targetW;
     canvas.height = targetH;
@@ -178,6 +186,10 @@ async function convertSvgToPngDataUrl(svgString: string, fallbackDataUrl: string
       resolve(fallbackDataUrl);
       return;
     }
+
+    // High quality canvas anti-aliasing & image smoothing
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
     const img = new Image();
     let isResolved = false;
@@ -432,6 +444,86 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
     }
   }
 
+  // 3. Post-process ALL <img> elements in the document to prevent stretching in Microsoft Word!
+  // We load each image's natural dimensions, calculate its correct proportional height based on its width,
+  // and set explicit width/height attributes and inline styles to completely disable any automatic resizing/stretching in Word.
+  console.log("[Export] Post-processing all images to set explicit non-stretching bounds...");
+  const finalImages = Array.from(div.getElementsByTagName("img"));
+  for (let i = 0; i < finalImages.length; i++) {
+    const img = finalImages[i];
+    const src = img.getAttribute("src") || "";
+    if (src) {
+      try {
+        const widthAttr = img.getAttribute("width");
+        const heightAttr = img.getAttribute("height");
+        
+        let targetW = widthAttr ? parseFloat(widthAttr) : 0;
+        let targetH = heightAttr ? parseFloat(heightAttr) : 0;
+
+        // Load the image to find its natural dimensions
+        const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+          const tempImg = new Image();
+          tempImg.onload = () => {
+            resolve({ w: tempImg.naturalWidth || tempImg.width || 0, h: tempImg.naturalHeight || tempImg.height || 0 });
+          };
+          tempImg.onerror = () => {
+            resolve({ w: 0, h: 0 });
+          };
+          tempImg.src = src;
+        });
+
+        if (dims.w > 0 && dims.h > 0) {
+          const naturalRatio = dims.h / dims.w;
+          
+          if (!targetW && !targetH) {
+            // Default to natural dimensions up to 16 cm (600px at 96 DPI)
+            targetW = Math.min(600, dims.w);
+            targetH = Math.round(targetW * naturalRatio);
+          } else if (targetW && !targetH) {
+            // Proportional height - cap to 16 cm (600px)
+            if (targetW > 600) {
+              targetW = 600;
+            }
+            targetH = Math.round(targetW * naturalRatio);
+          } else if (!targetW && targetH) {
+            // Proportional width
+            targetW = Math.round(targetH / naturalRatio);
+            if (targetW > 600) {
+              targetW = 600;
+              targetH = Math.round(targetW * naturalRatio);
+            }
+          } else {
+            // Both specified: Always force exact natural aspect ratio to prevent any stretching
+            if (targetW > 600) {
+              targetW = 600;
+            }
+            targetH = Math.round(targetW * naturalRatio);
+          }
+          
+          // Force set explicit attributes
+          img.setAttribute("width", targetW.toString());
+          img.setAttribute("height", targetH.toString());
+
+          // Clean up inline styles and inject explicit pixel bounds (Word is extremely picky about height: auto)
+          let originalStyle = img.getAttribute("style") || "";
+          
+          // Strip out height: auto, max-width: 100%, and width/height declarations from style
+          let cleanedStyle = originalStyle
+            .replace(/height\s*:\s*auto;?/gi, "")
+            .replace(/max-width\s*:\s*[^;]+;?/gi, "")
+            .replace(/width\s*:\s*[^;]+;?/gi, "")
+            .replace(/height\s*:\s*[^;]+;?/gi, "");
+          
+          // Re-add safe styles and explicit non-flexible width/height so MS Word maintains the aspect ratio
+          cleanedStyle = `width: ${targetW}px; height: ${targetH}px; max-width: 100%; border: none; display: block; margin: 0 auto; ` + cleanedStyle;
+          img.setAttribute("style", cleanedStyle.trim());
+        }
+      } catch (err) {
+        console.warn("[Export] Failed to post-process dimensions for image:", i, err);
+      }
+    }
+  }
+
   // Clear max-width and auto-margin on nested container divs so Word can lay them out fully
   const containerDivs = Array.from(div.getElementsByTagName("div"));
   containerDivs.forEach((container) => {
@@ -569,6 +661,101 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
     });
   });
 
+  // --- Traversing and re-numbering figures/tables for academic/scientific style ---
+  console.log("[Export] Programmatically re-numbering figures and tables for academic style...");
+  let currentSection = 1;
+  let figureCounter = 1;
+  let tableCounter = 1;
+  
+  const figureMap: Record<number, string> = {};
+  const tableMap: Record<number, string> = {};
+
+  const allElements = Array.from(div.getElementsByTagName("*"));
+  allElements.forEach((el) => {
+    const tagName = el.tagName.toLowerCase();
+    
+    if (tagName === "h1" || tagName === "h2" || tagName === "h3" || tagName === "h4" || tagName === "span") {
+      const text = el.textContent || "";
+      const match = text.match(/^(\d+)\.\d+/);
+      if (match) {
+        const sec = parseInt(match[1], 10);
+        if (sec !== currentSection && sec >= 1 && sec <= 10) {
+          currentSection = sec;
+          figureCounter = 1;
+          tableCounter = 1;
+          console.log(`[Export] Switched to Section ${currentSection} for academic numbering.`);
+        }
+      }
+    }
+    
+    if (tagName === "p" || tagName === "div") {
+      const text = el.textContent?.trim() || "";
+      
+      if (/^Table\s+(?:No\.\s+)?(\d+)/i.test(text)) {
+        const match = text.match(/^Table\s+(?:No\.\s+)?(\d+)/i);
+        if (match) {
+          const oldNum = parseInt(match[1], 10);
+          if (!tableMap[oldNum]) {
+            const newNumStr = `${currentSection}.${tableCounter}`;
+            tableMap[oldNum] = newNumStr;
+            tableCounter++;
+          }
+          const newNumStr = tableMap[oldNum];
+          
+          const originalHTML = el.innerHTML;
+          const updatedHTML = originalHTML.replace(/^Table\s+(?:No\.\s+)?\d+[\s:]*/i, `Table ${newNumStr}: `);
+          el.innerHTML = updatedHTML;
+          
+          el.setAttribute("style", "text-align: center; font-family: 'Times New Roman', Times, serif; font-size: 10.5pt; font-weight: bold; color: #000000; margin-top: 12pt; margin-bottom: 6pt; page-break-inside: avoid;");
+        }
+      }
+      else if (/^Figure\s+(\d+)/i.test(text)) {
+        const match = text.match(/^Figure\s+(\d+)/i);
+        if (match) {
+          const oldNum = parseInt(match[1], 10);
+          if (!figureMap[oldNum]) {
+            const newNumStr = `${currentSection}.${figureCounter}`;
+            figureMap[oldNum] = newNumStr;
+            figureCounter++;
+          }
+          const newNumStr = figureMap[oldNum];
+          
+          const originalHTML = el.innerHTML;
+          const updatedHTML = originalHTML.replace(/^Figure\s+\d+[\s:]*/i, `Figure ${newNumStr}: `);
+          el.innerHTML = updatedHTML;
+          
+          el.setAttribute("style", "text-align: center; font-family: 'Times New Roman', Times, serif; font-size: 10.5pt; font-weight: bold; color: #000000; margin-top: 8pt; margin-bottom: 12pt; page-break-inside: avoid;");
+        }
+      }
+    }
+  });
+
+  // Now fix references in text
+  const paragraphs = Array.from(div.getElementsByTagName("p"));
+  paragraphs.forEach((p) => {
+    const text = p.textContent || "";
+    // Skip if this paragraph is a caption itself
+    if (/^(Figure|Table)\s+\d+\.\d+/i.test(text.trim())) {
+      return;
+    }
+
+    let html = p.innerHTML;
+    
+    // Replace "Figure 3" -> "Figure 4.1"
+    html = html.replace(/\b(?:figure|Figure)\s+(\d+)\b/g, (match, numStr) => {
+      const num = parseInt(numStr, 10);
+      return figureMap[num] ? `Figure ${figureMap[num]}` : match;
+    });
+
+    // Replace "Table 1" -> "Table 3.1"
+    html = html.replace(/\b(?:table|Table)\s+(?:No\.\s+)?(\d+)\b/g, (match, numStr) => {
+      const num = parseInt(numStr, 10);
+      return tableMap[num] ? `Table ${tableMap[num]}` : match;
+    });
+
+    p.innerHTML = html;
+  });
+
   const finalHtml = div.innerHTML;
 
   // Prepare full HTML wrapper with robust publication styling
@@ -589,9 +776,10 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
 <style>
   @page Section1 {
     size: 8.27in 11.69in; /* Standard A4 Size */
-    margin: 0.6in 0.6in 0.6in 0.6in;
-    mso-header-margin: 0.3in;
-    mso-footer-margin: 0.3in;
+    margin: 1.0in 1.0in 1.0in 1.0in; /* 2.54 cm margins */
+    mso-header-margin: 0.5in;
+    mso-footer-margin: 0.5in;
+    mso-footer: f1;
     mso-paper-source: 0;
   }
   div.Section1 {
@@ -599,9 +787,9 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
   }
   @page Section2 {
     size: 11.69in 8.27in; /* Landscape A4 Size */
-    margin: 0.6in 0.6in 0.6in 0.6in;
-    mso-header-margin: 0.3in;
-    mso-footer-margin: 0.3in;
+    margin: 1.0in 1.0in 1.0in 1.0in; /* 2.54 cm margins */
+    mso-header-margin: 0.5in;
+    mso-footer-margin: 0.5in;
     mso-paper-source: 0;
   }
   div.Section2 {
@@ -610,40 +798,60 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
   }
   body {
     font-family: 'Times New Roman', Times, serif;
-    font-size: 11.5pt;
-    color: #111111;
-    line-height: 1.6;
+    font-size: 12pt;
+    color: #000000;
+    line-height: 1.5;
     margin: 0;
     padding: 0;
   }
+  p {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 12pt;
+    line-height: 1.5;
+    text-align: justify;
+    margin-top: 0in;
+    margin-bottom: 6pt;
+    mso-margin-top-alt: 0pt;
+    mso-margin-bottom-alt: 6pt;
+  }
   h1, h2, h3, h4 {
     font-family: 'Times New Roman', Times, serif;
-    color: #1e3a8a;
+    color: #000000; /* Strict academic monochrome */
     margin-top: 18pt;
     margin-bottom: 6pt;
+    mso-margin-top-alt: 18pt;
+    mso-margin-bottom-alt: 6pt;
     font-weight: bold;
+    page-break-after: avoid;
   }
-  h1 { font-size: 20pt; text-align: center; margin-bottom: 12pt; }
-  h2 { font-size: 15pt; border-bottom: 1.5pt solid #cbd5e1; padding-bottom: 3pt; }
-  h3 { font-size: 13pt; }
+  h1 { font-size: 16pt; text-align: center; margin-bottom: 12pt; mso-margin-bottom-alt: 12pt; }
+  h2 { font-size: 14pt; border-bottom: none; padding-bottom: 0; margin-top: 22pt; }
+  h3 { font-size: 12pt; margin-top: 14pt; }
+  h4 { font-size: 11pt; margin-top: 12pt; color: #333333; }
   table {
-    width: 100%;
-    table-layout: fixed;
+    width: auto !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
     border-collapse: collapse;
-    margin-top: 12pt;
-    margin-bottom: 18pt;
+    margin-top: 10pt;
+    margin-bottom: 14pt;
+    margin-left: auto;
+    margin-right: auto;
     font-family: 'Times New Roman', Times, serif;
     font-size: 9.5pt;
+    page-break-inside: avoid;
+    mso-table-lspace: 0pt;
+    mso-table-rspace: 0pt;
+  }
+  thead {
+    display: table-header-group; /* repeat headers across pages */
   }
   tr {
+    page-break-inside: avoid !important;
   }
   th, td {
-    border: 1pt solid #7f7f7f;
-    padding: 0.75pt 2pt;
-    mso-padding-top-alt: 15twips;
-    mso-padding-bottom-alt: 15twips;
-    mso-padding-left-alt: 40twips;
-    mso-padding-right-alt: 40twips;
+    border: 0.5pt solid #7f7f7f; /* Thin clean boundaries */
+    padding: 3.5pt 5.5pt;
     text-align: left;
     vertical-align: middle;
     mso-vertical-align-alt: middle;
@@ -653,13 +861,14 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
     word-break: break-word;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    line-height: 1.0;
+    line-height: 1.15;
     mso-line-height-rule: exactly;
+    mso-padding-alt: 3.5pt 5.5pt 3.5pt 5.5pt;
   }
   table th p, table td p {
     margin: 0 !important;
     padding: 0 !important;
-    line-height: 1.0 !important;
+    line-height: 1.15 !important;
     mso-line-height-rule: exactly !important;
     mso-margin-top-alt: 0pt !important;
     mso-margin-bottom-alt: 0pt !important;
@@ -670,6 +879,19 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
     font-weight: bold;
     color: #000000;
     text-align: center;
+    border-top: 1.5pt solid #000000;
+    border-bottom: 1.5pt solid #000000;
+  }
+  tr:nth-child(even) td {
+    background-color: #fafafa; /* Elegant zebra striping for data rows */
+  }
+  p.MsoFooter, li.MsoFooter, div.MsoFooter {
+    margin: 0in;
+    margin-bottom: .0001pt;
+    mso-pagination: widow-orphan;
+    font-size: 10pt;
+    font-family: 'Times New Roman', Times, serif;
+    color: #444444;
   }
   .text-left { text-align: left; }
   .text-right { text-align: right; }
@@ -679,31 +901,38 @@ export async function convertHtmlToWordDocHtml(contentHtml: string, fileName: st
   .mb-4 { margin-bottom: 16px; }
   .mt-8 { margin-top: 32px; }
   ul { margin-top: 6pt; margin-bottom: 12pt; padding-left: 20pt; }
-  li { margin-bottom: 4pt; }
+  li { margin-bottom: 4pt; text-align: justify; }
   .bg-white { background-color: #ffffff; }
-  .rounded-2xl { border-radius: 8px; }
-  .border { border: 1pt solid #cbd5e1; }
-  .p-5 { padding: 15pt; }
-  .bg-indigo-900 { background-color: #1e3a8a; color: #ffffff; padding: 15pt; border-radius: 8px; }
-  .text-indigo-100 { color: #dbeafe; }
-  .text-indigo-50 { color: #f0f9ff; }
-  .text-emerald-400 { color: #34d399; }
-  .text-amber-400 { color: #fbbf24; }
+  .rounded-2xl { border-radius: 4px; }
+  .border { border: 0.5pt solid #cbd5e1; }
+  .p-5 { padding: 12pt; }
+  .bg-indigo-900 { background-color: #f8fafc; color: #000000; padding: 12pt; border: 1pt solid #cbd5e1; border-radius: 4px; }
+  .text-indigo-100 { color: #334155; }
+  .text-indigo-50 { color: #1e293b; }
+  .text-emerald-400 { color: #047857; font-weight: bold; }
+  .text-amber-400 { color: #b45309; font-weight: bold; }
 </style>
 </head>
 <body>
   <div class="Section1">
     <!-- Draft Report Header Banner -->
-    <div style="background-color: #fffaf0; border: 3px double #dd6b20; padding: 15px 20px; text-align: center; margin-bottom: 25px; border-radius: 4px;">
-      <h2 style="color: #dd6b20; margin: 0 0 5px 0 !important; font-size: 16pt; font-family: 'Times New Roman', Times, serif; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; border-bottom: none; padding-bottom: 0; text-align: center;">
-        ⚠️ DRAFT VERSION
+    <div style="background-color: #fffaf0; border: 1.5pt solid #dd6b20; padding: 10pt 15pt; text-align: center; margin-bottom: 20pt; border-radius: 4px; page-break-inside: avoid;">
+      <h2 style="color: #dd6b20; margin: 0 0 5px 0 !important; font-size: 14pt; font-family: 'Times New Roman', Times, serif; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; border-bottom: none; padding-bottom: 0; text-align: center;">
+        ⚠️ TECHNICAL PREVIEW & VERIFICATION COPY
       </h2>
-      <p style="margin: 0 !important; font-size: 10.5pt; font-family: 'Times New Roman', Times, serif; color: #7b341e; line-height: 1.4; text-align: center;">
-        This Groundwater Quality Report is a Draft copy downloaded for preview and validation purposes. All values, maps, and conclusions are subject to change.
+      <p style="margin: 0 !important; font-size: 10pt; font-family: 'Times New Roman', Times, serif; color: #7b341e; line-height: 1.4; text-align: center;">
+        This Groundwater Quality Report has been compiled in high-resolution technical format. All values, maps, and illustrations are typeset for scientific validation.
       </p>
     </div>
 
     ${finalHtml}
+
+    <!-- Formal Footer with Dynamic Page Numbering in Word -->
+    <div style="mso-element: footer" id="f1">
+      <p class="MsoFooter" style="text-align: center; border-top: 0.5pt solid #cccccc; padding-top: 4pt;">
+        Page <span style="mso-field-code: ' PAGE '"></span> of <span style="mso-field-code: ' NUMPAGES '"></span>
+      </p>
+    </div>
   </div>
 </body>
 </html>`;
@@ -797,7 +1026,7 @@ export async function convertHtmlToDocxBlob(completeHtml: string, fileName: stri
   <w:body>
     <w:altChunk r:id="htmlChunk" />
     <w:sectPr>
-      <w:pgSz w:w="12240" w:h="15840" w:orient="portrait" />
+      <w:pgSz w:w="11906" w:h="16838" w:orient="portrait" />
       <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0" />
     </w:sectPr>
   </w:body>

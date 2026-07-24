@@ -3481,6 +3481,8 @@ export default function AdvancedAnalysisView({
         canvas.height = chart.chartHeight * scale;
         const context = canvas.getContext("2d");
         if (context) {
+          context.imageSmoothingEnabled = true;
+          context.imageSmoothingQuality = "high";
           context.fillStyle = biplotSettings.plotBgColor === "transparent" ? "#ffffff" : biplotSettings.plotBgColor;
           context.fillRect(0, 0, canvas.width, canvas.height);
           context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -3568,6 +3570,8 @@ export default function AdvancedAnalysisView({
         canvas.height = chart.chartHeight * scale;
         const context = canvas.getContext("2d");
         if (context) {
+          context.imageSmoothingEnabled = true;
+          context.imageSmoothingQuality = "high";
           context.fillStyle = "#ffffff";
           context.fillRect(0, 0, canvas.width, canvas.height);
           context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -6147,7 +6151,7 @@ export default function AdvancedAnalysisView({
                   </p>
                   <p className="text-[10px] text-slate-500 mt-1.5 uppercase font-bold tracking-wide">
                     {comparisonMode === "seasonal" ? (
-                      <>Exceedance Rate: <strong className="text-slate-700 font-black">{comparisonStatsData.grandTotal?.baseExceedPct.toFixed(1)}%</strong></>
+                      <>Exceedance Rate: <strong className="text-slate-700 font-black">{comparisonStatsData.grandTotal?.baseExceedPct.toFixed(2)}%</strong></>
                     ) : (
                       <>From {comparisonYearsList[0] || "N/A"} to {comparisonYearsList[comparisonYearsList.length - 1] || "N/A"}</>
                     )}
@@ -6177,7 +6181,7 @@ export default function AdvancedAnalysisView({
                   </p>
                   <p className="text-[10px] text-slate-500 mt-1.5 uppercase font-bold tracking-wide">
                     {comparisonMode === "seasonal" ? (
-                      <>Exceedance Rate: <strong className="text-slate-700 font-black">{comparisonStatsData.grandTotal?.compExceedPct.toFixed(1)}%</strong></>
+                      <>Exceedance Rate: <strong className="text-slate-700 font-black">{comparisonStatsData.grandTotal?.compExceedPct.toFixed(2)}%</strong></>
                     ) : (
                       <>Standard limits configured by limits manager</>
                     )}
@@ -6203,7 +6207,7 @@ export default function AdvancedAnalysisView({
                       <>
                         {comparisonStatsData.grandTotal && comparisonStatsData.grandTotal.diffAvg > 0 ? "+" : ""}
                         {comparisonStatsData.grandTotal?.diffAvg.toFixed(3)}
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-normal">({comparisonStatsData.grandTotal?.pctChangeAvg.toFixed(1)}%)</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-normal">({comparisonStatsData.grandTotal?.pctChangeAvg.toFixed(2)}%)</span>
                       </>
                     ) : (
                       `${processedComparisonList.length} Groups`
@@ -6307,7 +6311,7 @@ export default function AdvancedAnalysisView({
                               </td>
                               {/* Base Exceedance */}
                               <td className="p-2.5 px-3 text-center font-sans text-xs font-bold text-slate-600">
-                                {row.baseCount > 0 ? `${row.baseExceedPct.toFixed(1)}%` : "-"}
+                                {row.baseCount > 0 ? `${row.baseExceedPct.toFixed(2)}%` : "-"}
                               </td>
                               {/* Compare Average */}
                               <td className="p-2.5 px-3 text-right font-sans text-xs text-slate-900 bg-indigo-50/15">
@@ -6316,7 +6320,7 @@ export default function AdvancedAnalysisView({
                               </td>
                               {/* Compare Exceedance */}
                               <td className="p-2.5 px-3 text-center font-sans text-xs font-black text-slate-800 bg-indigo-50/15">
-                                {row.compCount > 0 ? `${row.compExceedPct.toFixed(1)}%` : "-"}
+                                {row.compCount > 0 ? `${row.compExceedPct.toFixed(2)}%` : "-"}
                               </td>
                               {/* Absolute Difference */}
                               <td className={`p-2.5 px-3 text-right font-sans text-xs font-extrabold ${row.diffAvg < 0 ? "text-emerald-700" : row.diffAvg > 0 ? "text-rose-700" : "text-slate-500"}`}>
@@ -6324,7 +6328,7 @@ export default function AdvancedAnalysisView({
                               </td>
                               {/* % Change */}
                               <td className={`p-2.5 px-3 text-center font-sans text-xs font-black ${row.pctChangeAvg < 0 ? "text-emerald-700 bg-emerald-50/10" : row.pctChangeAvg > 0 ? "text-rose-700 bg-rose-50/10" : "text-slate-500"}`}>
-                                {row.baseCount > 0 && row.compCount > 0 ? `${row.pctChangeAvg > 0 ? "+" : ""}${row.pctChangeAvg.toFixed(1)}%` : "-"}
+                                {row.baseCount > 0 && row.compCount > 0 ? `${row.pctChangeAvg > 0 ? "+" : ""}${row.pctChangeAvg.toFixed(2)}%` : "-"}
                               </td>
                               {/* Trend Indicator badge */}
                               <td className="p-2.5 px-3 text-center">
@@ -6354,7 +6358,7 @@ export default function AdvancedAnalysisView({
                                     </td>
                                     {/* Year Exceedance */}
                                     <td className="p-2.5 px-3 text-center font-sans text-xs text-slate-600 font-bold">
-                                      {ys?.count > 0 ? `${ys.exceedPct.toFixed(1)}%` : "-"}
+                                      {ys?.count > 0 ? `${ys.exceedPct.toFixed(2)}%` : "-"}
                                     </td>
                                   </React.Fragment>
                                 );
@@ -6394,7 +6398,7 @@ export default function AdvancedAnalysisView({
                             </td>
                             {/* Base Exceedance */}
                             <td className="p-3 text-center font-sans text-xs text-slate-800">
-                              {comparisonStatsData.grandTotal.baseExceedPct.toFixed(1)}%
+                              {comparisonStatsData.grandTotal.baseExceedPct.toFixed(2)}%
                             </td>
                             {/* Compare Average */}
                             <td className="p-3 text-right font-sans text-xs text-indigo-950 bg-indigo-50/20">
@@ -6403,7 +6407,7 @@ export default function AdvancedAnalysisView({
                             </td>
                             {/* Compare Exceedance */}
                             <td className="p-3 text-center font-sans text-xs text-slate-800 bg-indigo-50/20">
-                              {comparisonStatsData.grandTotal.compExceedPct.toFixed(1)}%
+                              {comparisonStatsData.grandTotal.compExceedPct.toFixed(2)}%
                             </td>
                             {/* Absolute Difference */}
                             <td className={`p-3 text-right font-sans text-xs font-extrabold ${comparisonStatsData.grandTotal.diffAvg < 0 ? "text-emerald-850" : "text-rose-800"}`}>
@@ -6411,7 +6415,7 @@ export default function AdvancedAnalysisView({
                             </td>
                             {/* % Change */}
                             <td className={`p-3 text-center font-sans text-xs font-black ${comparisonStatsData.grandTotal.pctChangeAvg < 0 ? "text-emerald-800 bg-emerald-50/10" : "text-rose-800 bg-rose-50/10"}`}>
-                              {comparisonStatsData.grandTotal.pctChangeAvg > 0 ? "+" : ""}{comparisonStatsData.grandTotal.pctChangeAvg.toFixed(1)}%
+                              {comparisonStatsData.grandTotal.pctChangeAvg > 0 ? "+" : ""}{comparisonStatsData.grandTotal.pctChangeAvg.toFixed(2)}%
                             </td>
                             {/* Overall classification badge */}
                             <td className="p-3 text-center">
@@ -6437,7 +6441,7 @@ export default function AdvancedAnalysisView({
                                   </td>
                                   {/* Year Exceedance */}
                                   <td className="p-3 text-center font-sans text-xs text-slate-700">
-                                    {tys && tys.count > 0 ? `${tys.exceedPct.toFixed(1)}%` : "-"}
+                                    {tys && tys.count > 0 ? `${tys.exceedPct.toFixed(2)}%` : "-"}
                                   </td>
                                 </React.Fragment>
                               );
@@ -6655,7 +6659,7 @@ export default function AdvancedAnalysisView({
                               {biplotType === "ca-so4" && "Ca²⁺ > SO₄²⁻ (Dolomite/Calcite)"}
                               {biplotType === "cams-hco3so4" && "Excess Ca+Mg (Carbonate)"}
                             </span>
-                            <span>{biplotStats.abovePct.toFixed(1)}%</span>
+                            <span>{biplotStats.abovePct.toFixed(2)}%</span>
                           </div>
                           <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                             <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${biplotStats.abovePct}%` }} />
@@ -6669,7 +6673,7 @@ export default function AdvancedAnalysisView({
                               {biplotType === "ca-so4" && "Ca²⁺ ≤ SO₄²⁻ (Sulfate reduction)"}
                               {biplotType === "cams-hco3so4" && "Deficit Ca+Mg (Ion Exchange)"}
                             </span>
-                            <span>{biplotStats.belowPct.toFixed(1)}%</span>
+                            <span>{biplotStats.belowPct.toFixed(2)}%</span>
                           </div>
                           <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                             <div className="bg-amber-500 h-full rounded-full" style={{ width: `${biplotStats.belowPct}%` }} />

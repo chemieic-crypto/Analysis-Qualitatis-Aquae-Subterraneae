@@ -2337,7 +2337,7 @@ export default function GisMapView({
     const activeParamConfig = PARAM_CONFIG[paramKey] || { b1: 1, b2: 10, unit: "mg/L", name: paramKey };
     const exceedLimit = activeParamConfig.b2;
     const exceeding = vals.filter(v => v > exceedLimit).length;
-    const percentage = ((exceeding / total) * 100).toFixed(1);
+    const percentage = ((exceeding / total) * 100).toFixed(2);
 
     // Determine the subgroup level (States/UTs or Districts)
     const stateKey = headerMap["state"] || headers.state || "State";
@@ -4976,6 +4976,9 @@ ${svgStatsPanel}
 
     const tempCtx = tempCanvas.getContext("2d");
     if (!tempCtx) return;
+
+    tempCtx.imageSmoothingEnabled = true;
+    tempCtx.imageSmoothingQuality = "high";
 
     // Fill white background for high quality raster print
     tempCtx.fillStyle = "#ffffff";

@@ -566,7 +566,7 @@ export default function HydrochemistryView({
 
           {/* Quick mapping configurations */}
           {showConfig && (
-            <div className="p-5 border border-slate-200 bg-slate-50/45 rounded-2xl grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3.5 animate-fadeIn">
+            <div className="p-3 sm:p-5 border border-slate-200 bg-slate-50/45 rounded-2xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3.5 animate-fadeIn">
               {COLUMN_DEFINITIONS.map((def) => {
                 const availableCols = Object.keys(mainRawData[0] || {});
                 return (

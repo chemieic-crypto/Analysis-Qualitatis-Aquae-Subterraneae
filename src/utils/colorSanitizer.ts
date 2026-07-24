@@ -459,9 +459,11 @@ export const safeHtml2canvas = async (
 
   try {
     const html2canvasOptions = {
+      scale: 4,
       useCORS: true,
       allowTaint: false,
       logging: false,
+      backgroundColor: "#ffffff",
       scrollX: 0,
       scrollY: 0,
       ...finalOptions

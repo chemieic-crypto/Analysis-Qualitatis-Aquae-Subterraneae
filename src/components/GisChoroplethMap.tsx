@@ -839,6 +839,9 @@ export default function GisChoroplethMap({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
     // Reset transform before scaling to avoid cumulative scales
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(pixelRatio, pixelRatio);
@@ -3006,7 +3009,7 @@ export default function GisChoroplethMap({
                       color: getColorForExceedance(hoveredGroup.pctExceedance),
                     }}
                   >
-                    {hoveredGroup.pctExceedance.toFixed(1) + "%"}
+                    {hoveredGroup.pctExceedance.toFixed(2) + "%"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -3051,7 +3054,7 @@ export default function GisChoroplethMap({
             </div>
 
             {/* Table Content (Scrollable) */}
-            <div className="p-4 overflow-y-auto flex-1 bg-white">
+            <div className="p-2 sm:p-4 overflow-y-auto overflow-x-auto custom-scrollbar flex-1 bg-white">
               <table className="w-full text-left border-collapse text-[10px]">
                 <thead>
                   <tr className="text-[9px] uppercase tracking-wider font-semibold text-slate-400 border-b border-slate-100 pb-2">

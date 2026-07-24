@@ -27,6 +27,119 @@ if (typeof Highcharts === "object") {
   initHighchartsHelperModule(Cylinder, Highcharts);
   initHighchartsHelperModule(Exporting, Highcharts);
   initHighchartsHelperModule(OfflineExporting, Highcharts);
+
+  if (typeof (Highcharts as any).setOptions === "function") {
+    (Highcharts as any).setOptions({
+      chart: {
+        style: {
+          fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif",
+          fontSize: "12px",
+          fontWeight: "500",
+        },
+        resetZoomButton: {
+          theme: {
+            style: {
+              fontSize: "11px",
+              fontWeight: "bold",
+            }
+          }
+        }
+      },
+      title: {
+        style: {
+          color: "#0f172a",
+          fontSize: "15px",
+          fontWeight: "800",
+          letterSpacing: "0.01em"
+        }
+      },
+      subtitle: {
+        style: {
+          color: "#475569",
+          fontSize: "12px",
+          fontWeight: "600"
+        }
+      },
+      xAxis: {
+        labels: {
+          style: {
+            color: "#1e293b",
+            fontSize: "11px",
+            fontWeight: "600"
+          }
+        },
+        title: {
+          style: {
+            color: "#0f172a",
+            fontSize: "12px",
+            fontWeight: "700"
+          }
+        },
+        lineColor: "#64748b",
+        lineWidth: 1.5,
+        tickColor: "#64748b",
+        tickWidth: 1.5
+      },
+      yAxis: {
+        labels: {
+          style: {
+            color: "#1e293b",
+            fontSize: "11px",
+            fontWeight: "600"
+          }
+        },
+        title: {
+          style: {
+            color: "#0f172a",
+            fontSize: "12px",
+            fontWeight: "700"
+          }
+        },
+        gridLineColor: "#e2e8f0",
+        gridLineWidth: 1
+      },
+      legend: {
+        itemStyle: {
+          color: "#0f172a",
+          fontSize: "11px",
+          fontWeight: "700"
+        },
+        itemHoverStyle: {
+          color: "#2563eb"
+        }
+      },
+      plotOptions: {
+        series: {
+          states: {
+            hover: {
+              halo: {
+                size: 9,
+                opacity: 0.25
+              }
+            }
+          },
+          dataLabels: {
+            style: {
+              fontSize: "11px",
+              fontWeight: "700",
+              textOutline: "2px #ffffff"
+            }
+          }
+        }
+      },
+      exporting: {
+        scale: 4,
+        chartOptions: {
+          chart: {
+            backgroundColor: "#ffffff"
+          }
+        }
+      },
+      credits: {
+        enabled: false
+      }
+    });
+  }
 }
 
 export function safeStringToBase64(str: string): string {
@@ -230,6 +343,7 @@ export function scaleSvgStringToHighRes(svgStr: string, targetW: number, targetH
 
 /**
  * Trims transparent and white margins from an HTML5 canvas to tightly fit the content.
+ * Highly optimized using pixel-step sampling to prevent browser blocking.
  */
 function cropCanvasToContent(canvas: HTMLCanvasElement): HTMLCanvasElement {
   const ctx = canvas.getContext("2d");
@@ -252,9 +366,16 @@ function cropCanvasToContent(canvas: HTMLCanvasElement): HTMLCanvasElement {
   let maxY = 0;
   let hasContent = false;
 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  // Optimize: Sample pixels (checking every 4th pixel) to reduce iteration count by 16x.
+  // This is extremely safe for charts because lines/bars/text spans multiple pixels,
+  // and we apply a generous padding to the resulting cropped area.
+  const stepX = 4;
+  const stepY = 4;
+
+  for (let y = 0; y < h; y += stepY) {
+    for (let x = 0; x < w; x += stepX) {
       const idx = (y * w + x) * 4;
+      if (idx >= data.length) continue;
       const r = data[idx];
       const g = data[idx + 1];
       const b = data[idx + 2];
@@ -278,8 +399,8 @@ function cropCanvasToContent(canvas: HTMLCanvasElement): HTMLCanvasElement {
     return canvas;
   }
 
-  // Tight crop margin around content
-  const padding = 6;
+  // Tight crop margin around content, slightly increased to account for step sampling
+  const padding = 12;
   minX = Math.max(0, minX - padding);
   minY = Math.max(0, minY - padding);
   maxX = Math.min(w - 1, maxX + padding);
@@ -321,16 +442,22 @@ function convertSvgToCroppedPng(base64Svg: string, width: number, height: number
     const img = new Image();
     img.onload = () => {
       try {
+        const scale = 3.0; // High resolution scaling to remove blurriness and ensure crystal clear curves
         const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width * scale;
+        canvas.height = height * scale;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           resolve(base64Svg);
           return;
         }
-        ctx.clearRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Use smooth scaling settings for top quality
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        
+        ctx.drawImage(img, 0, 0, width * scale, height * scale);
 
         const croppedCanvas = cropCanvasToContent(canvas);
         resolve(croppedCanvas.toDataURL("image/png"));
@@ -475,10 +602,7 @@ export async function generateOfflineChartBase64(
       }
 
       const sanitizedSvg = sanitizeSvgStringForCanvas(svg);
-      let cleanSvg = sanitizedSvg;
-      if (!/<svg[^>]*\bviewBox=/i.test(cleanSvg)) {
-        cleanSvg = cleanSvg.replace(/<svg/i, `<svg viewBox="0 0 ${width} ${height}"`);
-      }
+      let cleanSvg = scaleSvgStringToHighRes(sanitizedSvg, width * 3.0, height * 3.0);
       const base64Svg = "data:image/svg+xml;base64," + safeStringToBase64(cleanSvg);
       convertSvgToCroppedPng(base64Svg, width, height).then(resolve);
       return;
@@ -494,7 +618,8 @@ export async function generateOfflineChartBase64(
       try {
         const ultimateSvg = generateFallbackSvg(options, width, height);
         const sanUltimate = sanitizeSvgStringForCanvas(ultimateSvg);
-        const base64Svg = "data:image/svg+xml;base64," + safeStringToBase64(sanUltimate);
+        const cleanUltimate = scaleSvgStringToHighRes(sanUltimate, width * 3.0, height * 3.0);
+        const base64Svg = "data:image/svg+xml;base64," + safeStringToBase64(cleanUltimate);
         convertSvgToCroppedPng(base64Svg, width, height).then(resolve);
       } catch (_) {
         resolve("");
@@ -567,12 +692,11 @@ export function buildColumnsChartOptions(title: string, categories: string[], da
 /**
  * Builds standard 3D Pie / Donut chart options.
  */
-export function buildDonutChartOptions(title: string, dataPoints: any[], size = "80%", isDarkTheme = false): Highcharts.Options {
-  const finalSize = size; // Use the specified size directly to match detailed analysis and look larger
+export function buildDonutChartOptions(title: string, dataPoints: any[], size = "55%", isDarkTheme = false): Highcharts.Options {
+  const finalSize = size; // Reduced donut size by 30% (from 80% to 55%) to give space for 100% enlarged labels
   const textColor = isDarkTheme ? "#f8fafc" : "#1e293b";
-  const isSarOrRsc = /SAR|RSC|Sodium Adsorption Ratio|Residual Sodium Carbonate/i.test(title);
-  const titleFontSize = "12pt"; // Force title font to exactly 12pt Times New Roman as requested
-  const labelFontSize = isSarOrRsc ? "16pt" : "12pt"; // Crisper and 50% larger than 10pt base
+  const titleFontSize = "24pt"; // Increased by 100% (doubled from 12pt to 24pt)
+  const labelFontSize = "22pt"; // Increased by 100% (doubled from 11pt to 22pt)
   
   return {
     chart: {
@@ -581,23 +705,23 @@ export function buildDonutChartOptions(title: string, dataPoints: any[], size = 
         enabled: true,
         alpha: 45,  // Balanced dramatic perspective tilt to match attached 3D donut image
         beta: 0,
-        depth: 70,  // Deeper 3D extrusion/cylinder height for rich tactile depth
+        depth: 60,  // Deeper 3D extrusion height
       },
       backgroundColor: "transparent",
       plotBackgroundColor: "transparent",
-      spacingTop: 10,
-      spacingBottom: 10,
-      spacingLeft: 5,
-      spacingRight: 5,
+      spacingTop: 15,
+      spacingBottom: 15,
+      spacingLeft: 10,
+      spacingRight: 10,
       style: {
         fontFamily: "'Times New Roman', Times, serif"
       }
     },
     title: {
       text: title,
-      margin: 7, // Reduce space between title and donut plot area by ~50% (default is 15)
+      margin: 15,
       style: { 
-        fontSize: titleFontSize, 
+        fontSize: titleFontSize, // 24pt
         fontWeight: "bold", 
         color: textColor, 
         fontFamily: "'Times New Roman', Times, serif" 
@@ -605,39 +729,39 @@ export function buildDonutChartOptions(title: string, dataPoints: any[], size = 
     },
     plotOptions: {
       pie: {
-        innerSize: "55%", // Perfect chunky ring structure matching Detailed Analysis' gorgeous ratio
-        depth: 70,        // Extra depth matching options3d.depth
-        size: finalSize,
+        innerSize: "38%", // Reduced proportionally with donut outer size
+        depth: 60,
+        size: finalSize, // 55% size (30% reduction)
         borderWidth: 2,   // Crisp boundaries dividing 3D slices beautifully
-        borderColor: isDarkTheme ? "#1e293b" : "#ffffff", // High-contrast dividing line matching surrounding card background
+        borderColor: isDarkTheme ? "#1e293b" : "#ffffff",
         allowPointSelect: false,
         cursor: "pointer",
-        slicedOffset: 35,
+        slicedOffset: 25,
         dataLabels: {
           enabled: true,
           useHTML: false,
           formatter: function (this: any) {
             const color = this.point?.color || this.color || (isDarkTheme ? "#f8fafc" : "#0f172a");
-            return `<span style="color: ${color}; fill: ${color}; font-weight: bold; font-family: 'Times New Roman', Times, serif;">${this.point.name}<br/>${this.point.percentage.toFixed(1)}% (${this.point.y})</span>`;
+            return `<span style="color: ${color}; fill: ${color}; font-weight: bold; font-family: 'Times New Roman', Times, serif; font-size: 22pt;">${this.point.name}<br/>${this.point.percentage.toFixed(1)}% (${this.point.y})</span>`;
           },
-          distance: 15, // Brings labels slightly closer to avoid being pushed off/clipped on the canvas edges
-          crop: false, // Ensure labels never get clipped by the plot boundary
-          overflow: "allow", // Ensure labels can occupy extra margin space safely
-          connectorWidth: 3, // Crisp connector line
+          distance: 25,
+          crop: false,
+          overflow: "allow",
+          connectorWidth: 3,
           connectorPadding: 8,
           style: { 
             fontFamily: "'Times New Roman', Times, serif",
-            fontSize: labelFontSize, 
+            fontSize: labelFontSize, // 22pt
             fontWeight: "bold",
-            fontStyle: "italic", // Bold + Italic as requested
+            fontStyle: "italic",
             textOutline: "none", 
           },
         },
-        showInLegend: false, // Turn off legend for clear direct slice labeling as shown in reference
+        showInLegend: false,
       },
     },
     legend: {
-      enabled: false, // Turn off legend as requested
+      enabled: false,
     },
     series: [
       {
@@ -654,6 +778,6 @@ export function buildDonutChartOptions(title: string, dataPoints: any[], size = 
  * High quality wrapper for quick generating parameter donut chart as base64 string
  */
 export async function generateParamDonutChart(title: string, dataPoints: any[], isDarkTheme = false): Promise<string> {
-  const options = buildDonutChartOptions(title, dataPoints, "80%", isDarkTheme);
-  return generateOfflineChartBase64(options, 1224, 620); // Width increased 20% from 1020 to 1224 to prevent label clipping
+  const options = buildDonutChartOptions(title, dataPoints, "55%", isDarkTheme);
+  return generateOfflineChartBase64(options, 1800, 1000); // Render at HD resolution (1800x1000) for crystal-clear exports
 }

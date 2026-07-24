@@ -227,9 +227,9 @@ export default function PamphletView({
       const topParamNamesStr = topExceeding.map((p) => `${p.name} (${p.key})`).join(", ");
 
       // 4. Construct descriptive executive templates
-      const safePct = totalSamples > 0 ? ((safeSamplesCount / totalSamples) * 100).toFixed(1) : "0.0";
-      const singlePct = totalSamples > 0 ? ((singleExceedanceCount / totalSamples) * 100).toFixed(1) : "0.0";
-      const multiPct = totalSamples > 0 ? ((multiExceedanceCount / totalSamples) * 100).toFixed(1) : "0.0";
+      const safePct = totalSamples > 0 ? ((safeSamplesCount / totalSamples) * 100).toFixed(2) : "0.00";
+      const singlePct = totalSamples > 0 ? ((singleExceedanceCount / totalSamples) * 100).toFixed(2) : "0.00";
+      const multiPct = totalSamples > 0 ? ((multiExceedanceCount / totalSamples) * 100).toFixed(2) : "0.00";
 
       let textPara1 = `A comprehensive groundwater quality assessment was carried out for <strong>${regionName}</strong> based on the analysis of <strong>${totalSamples}</strong> groundwater samples collected from various blocks and habitations. The study evaluated major physicochemical parameters and heavy metals to assess the suitability of groundwater for drinking purposes as per BIS IS 10500 standards. The results indicate that groundwater quality in the region is influenced by both natural geological conditions and anthropogenic activities such as intensive agriculture, excessive groundwater extraction, and improper waste disposal.`;
 
@@ -788,7 +788,7 @@ export default function PamphletView({
         let itemsHtml = "";
         Object.entries(blockColorMap).forEach(([blockName, color]) => {
           itemsHtml += `
-            <div style="display: inline-flex; align-items: center; margin: 4px 10px; font-size: 11px; font-family: 'Inter', Arial, sans-serif;">
+            <div style="display: inline-flex; align-items: center; margin: 4px 10px; font-size: 11px; font-family: 'Times New Roman', Times, serif;">
               <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 3px 3px, #ffffff, ${color} 40%, ${darkenColor(color, 30)}); border: 0.5px solid rgba(0,0,0,0.15); margin-right: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);"></span>
               <strong style="color: #475569;">${blockName}</strong>
             </div>
@@ -870,7 +870,7 @@ export default function PamphletView({
         });
 
         const svgMarkup = `
-          <svg viewBox="-20 -25 340 310" width="550" height="480" style="background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1.5px solid #cbd5e1; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); font-family: 'Inter', Arial, sans-serif; margin: 0 auto; display: block;" xmlns="http://www.w3.org/2000/svg">
+          <svg viewBox="-20 -25 340 310" width="550" height="480" style="background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1.5px solid #cbd5e1; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); font-family: 'Times New Roman', Times, serif; margin: 0 auto; display: block;" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <filter id="3d-emboss" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur in="SourceAlpha" stdDeviation="0.6" result="blur" />
@@ -1025,7 +1025,7 @@ export default function PamphletView({
         });
 
         const svg = `
-          <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" style="background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1.5px solid #cbd5e1; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); font-family: 'Inter', Arial, sans-serif;" xmlns="http://www.w3.org/2000/svg">
+          <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" style="background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1.5px solid #cbd5e1; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); font-family: 'Times New Roman', Times, serif;" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <filter id="3d-emboss" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur in="SourceAlpha" stdDeviation="0.6" result="blur" />
@@ -1171,7 +1171,7 @@ export default function PamphletView({
         });
 
         const svg = `
-          <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" style="background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1.5px solid #cbd5e1; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); font-family: 'Inter', Arial, sans-serif;" xmlns="http://www.w3.org/2000/svg">
+          <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" style="background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1.5px solid #cbd5e1; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); font-family: 'Times New Roman', Times, serif;" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <filter id="3d-emboss" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur in="SourceAlpha" stdDeviation="0.6" result="blur" />
@@ -1459,7 +1459,7 @@ export default function PamphletView({
 
       // Assemble final HTML
       const finalHTML = `
-        <div style="font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; background-color: #ffffff; padding: 25px; border-radius: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
+        <div style="font-family: 'Times New Roman', Times, serif; max-width: 1000px; margin: 0 auto; background-color: #ffffff; padding: 25px; border-radius: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
           
           <!-- Pamphlet Header -->
           <div style="background: #ffffff; padding: 30px; border-radius: 20px; border: 1.5px solid #e2e8f0; text-align: center; margin-bottom: 40px;">

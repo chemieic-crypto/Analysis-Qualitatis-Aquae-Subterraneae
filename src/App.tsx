@@ -1095,10 +1095,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-8 relative">
+    <div className="min-h-screen p-2 sm:p-4 md:p-8 relative">
       
       {/* Dynamic Toast Notifications */}
-      <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
+      <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 max-w-[calc(100vw-2rem)] pointer-events-none">
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -1202,11 +1202,11 @@ export default function App() {
             <div className="text-center sm:text-left">
               <div className="flex flex-col sm:flex-row sm:items-center gap-x-5 gap-y-1">
                 {/* Main Title 'भूजल गुणवत्ता' (Bhujal Gunvaatta in Devanagari Cursive) */}
-                <h1 className="text-[47px] font-black text-blue-700 tracking-wide font-cursive-devanagari select-none" style={{ fontFamily: "'Kalam', 'Yatra One', cursive", lineHeight: "1.1" }}>
+                <h1 className="text-[26px] sm:text-[38px] md:text-[47px] font-black text-blue-700 tracking-wide font-cursive-devanagari select-none" style={{ fontFamily: "'Kalam', 'Yatra One', cursive", lineHeight: "1.1" }}>
                   भूजल गुणवत्ता
                 </h1>
                 {/* English Title styled in British Cursive Script */}
-                <h2 className="text-[47px] md:text-[62px] font-medium text-indigo-950 tracking-wide font-cursive select-none pt-1" style={{ fontFamily: "'Great Vibes', 'Playfair Display', serif", lineHeight: "1.1" }}>
+                <h2 className="text-[26px] sm:text-[38px] md:text-[62px] font-medium text-indigo-950 tracking-wide font-cursive select-none pt-1" style={{ fontFamily: "'Great Vibes', 'Playfair Display', serif", lineHeight: "1.1" }}>
                   Data Analysis Interface
                 </h2>
               </div>

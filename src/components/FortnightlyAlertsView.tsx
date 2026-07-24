@@ -340,25 +340,26 @@ const SimpleReportTable: React.FC<SimpleReportTableProps> = ({ data, isDistrict,
   const sumContaminated = sumMarginal + sumUnsafe;
 
   return (
-    <table className="w-full border-collapse border border-black text-[14px] text-center mb-8 bg-white">
-      <thead>
+    <div className="w-full overflow-x-auto custom-scrollbar mb-6">
+      <table className="border-collapse border border-black text-[13px] text-center bg-white mx-auto" style={{ width: 'auto', maxWidth: '100%', tableLayout: 'auto' }}>
+        <thead>
         <tr>
-          <th rowSpan={2} className="border border-black p-2 font-bold">Sl. No.</th>
-          <th rowSpan={2} className="border border-black p-2 font-bold">Name of {isDistrict ? 'District' : 'State/Union Territory'}</th>
-          <th rowSpan={2} className="border border-black p-2 font-bold w-24">Total no.<br/>of samples<br/>analysed</th>
-          <th colSpan={3} className="border border-black p-2 font-bold">No. of samples contaminated</th>
-          <th rowSpan={2} className="border border-black p-2 font-bold w-1/3 text-xs uppercase tracking-wider">Parameters of contamination</th>
+          <th rowSpan={2} className="border border-black p-1.5 font-bold text-center" style={{ width: 'auto', whiteSpace: 'nowrap' }}>Sl. No.</th>
+          <th rowSpan={2} className="border border-black p-1.5 font-bold text-left" style={{ width: 'auto', whiteSpace: 'nowrap' }}>Name of {isDistrict ? 'District' : 'State/Union Territory'}</th>
+          <th rowSpan={2} className="border border-black p-1.5 font-bold text-center" style={{ width: 'auto' }}>Total no.<br/>of samples<br/>analysed</th>
+          <th colSpan={3} className="border border-black p-1.5 font-bold text-center" style={{ width: 'auto' }}>No. of samples contaminated</th>
+          <th rowSpan={2} className="border border-black p-1.5 font-bold text-left uppercase tracking-wider" style={{ width: 'auto' }}>Parameters of contamination</th>
         </tr>
         <tr>
-          <th className="border border-black p-2 font-bold w-24">Above<br/>Acceptable<br/>Limit</th>
-          <th className="border border-black p-2 font-bold w-24">Above<br/>Permissible<br/>Limit</th>
-          <th className="border border-black p-2 font-bold w-24">Total samples<br/>Contaminated</th>
+          <th className="border border-black p-1.5 font-bold text-center" style={{ width: 'auto' }}>Above<br/>Acceptable<br/>Limit</th>
+          <th className="border border-black p-1.5 font-bold text-center" style={{ width: 'auto' }}>Above<br/>Permissible<br/>Limit</th>
+          <th className="border border-black p-1.5 font-bold text-center" style={{ width: 'auto' }}>Total samples<br/>Contaminated</th>
         </tr>
       </thead>
       <tbody>
         {data.length === 0 ? (
           <tr>
-            <td colSpan={7} className="border border-black p-4 text-center italic">No data available</td>
+            <td colSpan={7} className="border border-black p-3 text-center italic">No data available</td>
           </tr>
         ) : (
           data.map((row, idx) => {
@@ -368,23 +369,23 @@ const SimpleReportTable: React.FC<SimpleReportTableProps> = ({ data, isDistrict,
             
             return (
               <tr key={row.key || idx}>
-                <td className="border border-black p-2">{idx + 1}</td>
-                <td className="border border-black p-2 text-left font-bold">{isDistrict ? row.district : row.state}</td>
-                <td className="border border-black p-2 font-bold">
+                <td className="border border-black p-1.5 text-center font-medium" style={{ whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                <td className="border border-black p-1.5 text-left font-bold" style={{ whiteSpace: 'nowrap' }}>{isDistrict ? row.district : row.state}</td>
+                <td className="border border-black p-1.5 font-bold text-center" style={{ whiteSpace: 'nowrap' }}>
                   <input 
                     type="number" 
                     min="0"
                     value={manualTotals[row.key] !== undefined ? manualTotals[row.key] : row.total}
                     onChange={(e) => onManualTotalChange(row.key, e.target.value)}
-                    className="w-full max-w-[60px] text-center bg-transparent border-b border-dashed border-gray-400 outline-none no-print"
+                    className="w-full max-w-[50px] text-center bg-transparent border-b border-dashed border-gray-400 outline-none no-print"
                   />
                   <span className="print-only hidden">{manualTotals[row.key] !== undefined ? manualTotals[row.key] : row.total}</span>
                 </td>
-                <td className="border border-black p-2 font-bold">{row.marginal || 'Nil'}</td>
-                <td className="border border-black p-2 font-bold">{row.unsafe || 'Nil'}</td>
-                <td className="border border-black p-2 font-bold">{totalContaminated || 'Nil'}</td>
+                <td className="border border-black p-1.5 font-bold text-center" style={{ whiteSpace: 'nowrap' }}>{row.marginal || 'Nil'}</td>
+                <td className="border border-black p-1.5 font-bold text-center" style={{ whiteSpace: 'nowrap' }}>{row.unsafe || 'Nil'}</td>
+                <td className="border border-black p-1.5 font-bold text-center" style={{ whiteSpace: 'nowrap' }}>{totalContaminated || 'Nil'}</td>
                 <td 
-                  className="border border-black p-2 text-left text-[13px] leading-relaxed antialiased subpixel-antialiased font-semibold text-slate-900"
+                  className="border border-black p-1.5 text-left text-[12px] leading-snug antialiased subpixel-antialiased font-semibold text-slate-900"
                   style={{
                     fontFamily: 
                       contaminationFont === 'times' ? "'Times New Roman', Times, serif" :
@@ -403,16 +404,17 @@ const SimpleReportTable: React.FC<SimpleReportTableProps> = ({ data, isDistrict,
         )}
         {data.length > 0 && (
           <tr className="font-bold">
-            <td colSpan={2} className="border border-black p-2 font-bold text-right uppercase">Total</td>
-            <td className="border border-black p-2 font-bold">{sumTotalAnalysed}</td>
-            <td className="border border-black p-2 font-bold">{sumMarginal || 'Nil'}</td>
-            <td className="border border-black p-2 font-bold">{sumUnsafe || 'Nil'}</td>
-            <td className="border border-black p-2 font-bold">{sumContaminated || 'Nil'}</td>
-            <td className="border border-black p-2"></td>
+            <td colSpan={2} className="border border-black p-1.5 font-bold text-right uppercase">Total</td>
+            <td className="border border-black p-1.5 font-bold text-center">{sumTotalAnalysed}</td>
+            <td className="border border-black p-1.5 font-bold text-center">{sumMarginal || 'Nil'}</td>
+            <td className="border border-black p-1.5 font-bold text-center">{sumUnsafe || 'Nil'}</td>
+            <td className="border border-black p-1.5 font-bold text-center">{sumContaminated || 'Nil'}</td>
+            <td className="border border-black p-1.5"></td>
           </tr>
         )}
       </tbody>
     </table>
+  </div>
   );
 };
 
@@ -1114,6 +1116,17 @@ const FortnightlyAlertsView: React.FC<FortnightlyAlertsViewProps> = ({
       }
     });
 
+    // Ensure all tables in downloaded document are snug and content-fit without extra horizontal/vertical whitespace
+    const tables = clone.querySelectorAll('table');
+    tables.forEach(tbl => {
+      tbl.style.width = 'auto';
+      tbl.style.maxWidth = '100%';
+      tbl.style.tableLayout = 'auto';
+      tbl.style.marginLeft = 'auto';
+      tbl.style.marginRight = 'auto';
+      tbl.removeAttribute('width');
+    });
+
     const htmlContent = `
       <html xmlns:v="urn:schemas-microsoft-com:vml"
             xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -1134,23 +1147,23 @@ const FortnightlyAlertsView: React.FC<FortnightlyAlertsViewProps> = ({
           <style>
               @page WordSection1 {
                   size: 8.27in 11.69in;
-                  margin: 1.0in 1.0in 1.0in 1.0in;
+                  margin: 0.8in 0.8in 0.8in 0.8in;
               }
               div.WordSection1 { page: WordSection1; }
               body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11pt; }
-              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-              th, td { border: 1px solid black; padding: 8px; font-size: 10pt; text-align: center; vertical-align: top; }
+              table { border-collapse: collapse; width: auto !important; max-width: 100% !important; margin-left: auto; margin-right: auto; margin-bottom: 16px; table-layout: auto !important; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+              th, td { border: 1px solid black; padding: 4px 6px !important; font-size: 9.5pt; text-align: center; vertical-align: middle; white-space: normal; mso-padding-alt: 4pt 6pt 4pt 6pt; }
               .text-left { text-align: left !important; }
               .font-bold { font-weight: bold; }
               .bg-gray-100 { background-color: #f3f4f6; }
-              h1 { text-align: center; text-decoration: underline; font-size: 16pt; margin-bottom: 20px; color: black; }
-              h3 { text-decoration: underline; font-size: 14pt; margin-bottom: 10px; color: black; font-weight: bold; }
-              h4 { text-decoration: underline; font-size: 12pt; margin-bottom: 10px; color: black; font-weight: bold; }
-              h5 { text-decoration: underline; font-size: 11pt; font-weight: bold; color: black; }
+              h1 { text-align: center; text-decoration: underline; font-size: 16pt; margin-bottom: 16px; color: black; }
+              h3 { text-decoration: underline; font-size: 13pt; margin-bottom: 8px; color: black; font-weight: bold; }
+              h4 { text-decoration: underline; font-size: 11pt; margin-bottom: 8px; color: black; font-weight: bold; }
+              h5 { text-decoration: underline; font-size: 10.5pt; font-weight: bold; color: black; }
               .text-justify { text-align: justify; }
-              ul { margin-top: 5px; margin-bottom: 20px; }
-              li { margin-bottom: 5px; }
-              p { margin-bottom: 10px; line-height: 1.5; }
+              ul { margin-top: 4px; margin-bottom: 16px; }
+              li { margin-bottom: 4px; }
+              p { margin-bottom: 8px; line-height: 1.4; }
           </style>
       </head>
       <body>

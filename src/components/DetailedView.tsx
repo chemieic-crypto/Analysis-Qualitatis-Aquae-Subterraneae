@@ -67,6 +67,18 @@ function getTableHeaderLabels(configKey: string, config: any) {
   };
 }
 
+function getExceedanceLimitStr(configKey: string, config: any): string {
+  const unit = config?.unit || "";
+  const unitStr = unit ? ` ${toTableHeaderUnit(unit)}` : "";
+  if (configKey === "pH") {
+    return "(<6.5 or >8.5)";
+  }
+  if (config?.b1 === config?.b2) {
+    return `(>${config?.b1}${unitStr})`;
+  }
+  return `(>${config?.b2}${unitStr})`;
+}
+
 interface DetailedViewProps {
   rawData: any[];
   headers: DataHeaders;
@@ -307,7 +319,13 @@ export default function DetailedView({
   const activeConfig = PARAM_CONFIG[activeConfigKey] || PARAM_CONFIG[activeParam] || VIRTUAL_CONFIGS[activeParam] || { b1: 0, b2: 0, unit: "units", perm: 0, name: activeParam };
 
   // Tab state for additional statistical charts
-  const [statTab, setStatTab] = useState<"boxplot" | "average" | "violin" | "donut" | "ogive">("boxplot");
+  const [statTab, setStatTab] = useState<"boxplot" | "average" | "violin" | "donut" | "ogive" | "exceedance">("exceedance");
+  const [exceedanceSort, setExceedanceSort] = useState<"no" | "pct" | "total" | "name">("no");
+  const [exceedanceOrder, setExceedanceOrder] = useState<"desc" | "asc">("desc");
+  const [exceedanceColorMode, setExceedanceColorMode] = useState<"distinct" | "severity" | "uniform">("distinct");
+  const [exceedanceViewMode, setExceedanceViewMode] = useState<"dual" | "no" | "pct" | "grouped">("dual");
+  const [exceedanceTopN, setExceedanceTopN] = useState<"all" | "5" | "10" | "15" | "20" | "custom">("all");
+  const [exceedanceCustomN, setExceedanceCustomN] = useState<number>(10);
 
   const uniquePeriods = React.useMemo(() => {
     const periods = new Set<string>();
@@ -988,47 +1006,52 @@ export default function DetailedView({
         type: "pie",
         options3d: { enabled: true, alpha: 45, beta: 0, depth: 40 },
         backgroundColor: "transparent",
+        spacingTop: 15,
+        spacingBottom: 15,
+        spacingLeft: 10,
+        spacingRight: 10,
       },
       title: {
         text: titleText,
         style: {
           ...fontStyle,
-          fontSize: "13px",
+          fontSize: "26px", // Increased by 100% (doubled from 13px)
           fontWeight: "800",
         },
       },
       tooltip: {
-        style: { fontFamily: chartFontFamily },
+        style: { fontFamily: chartFontFamily, fontSize: "16px" },
         pointFormat: "<b>{point.y} samples</b> ({point.percentage:.1f}%)",
       },
       plotOptions: {
         pie: {
-          innerSize: "55%",
+          size: "55%", // Reduced donut size by 30% (from 80% to 55%) to leave ample space for enlarged labels
+          innerSize: "38%",
           depth: 40,
           borderWidth: 2,
           borderColor: chartTheme === "theme-dark" ? "#1e293b" : "#ffffff",
-          slicedOffset: 15,
+          slicedOffset: 20,
           dataLabels: {
             enabled: true,
             useHTML: true,
             format: isRscOrSar
-              ? `<div style="text-align: center; line-height: 1.4; padding: 2px; font-family: 'Times New Roman', Times, serif; font-size: 10pt;">
-                  <span style="font-weight: 700; color: {point.color};">{point.name}</span><br/>
-                  <span style="font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
-                  <span style="font-weight: 500; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
+              ? `<div style="text-align: center; line-height: 1.4; padding: 2px; font-family: 'Times New Roman', Times, serif;">
+                  <span style="font-size: 20px; font-weight: 700; color: {point.color};">{point.name}</span><br/>
+                  <span style="font-size: 24px; font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
+                  <span style="font-size: 20px; font-weight: 600; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
                 </div>`
               : `<div style="text-align: center; line-height: 1.4; padding: 2px; font-family: ${fontFamily};">
-                  <span style="font-size: 10px; font-weight: 700; color: {point.color};">{point.name}</span><br/>
-                  <span style="font-size: 12px; font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
-                  <span style="font-size: 10px; font-weight: 500; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
+                  <span style="font-size: 20px; font-weight: 700; color: {point.color};">{point.name}</span><br/>
+                  <span style="font-size: 24px; font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
+                  <span style="font-size: 20px; font-weight: 600; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
                 </div>`,
             style: {
               fontFamily: chartFontFamily,
-              fontSize: isRscOrSar ? "10pt" : `11px`,
+              fontSize: isRscOrSar ? "22pt" : "22px", // Increased by 100% (doubled from 11px/11pt)
               textOutline: "none",
             },
-            connectorWidth: 1.5,
-            connectorPadding: 4,
+            connectorWidth: 2,
+            connectorPadding: 6,
           },
         },
       },
@@ -1088,36 +1111,54 @@ export default function DetailedView({
     const dataPoints: { x: number; y: number }[] = [];
     
     if (minVal === maxVal) {
-      // If all values are the same, just plot points around it
-      dataPoints.push({ x: minVal - 1, y: 0 });
-      dataPoints.push({ x: minVal, y: 100 });
-      dataPoints.push({ x: minVal + 1, y: 100 });
+      const base = minVal > 0 ? minVal : 1;
+      dataPoints.push({ x: Number((base * 0.5).toFixed(3)), y: 0 });
+      dataPoints.push({ x: Number(base.toFixed(3)), y: 100 });
+      dataPoints.push({ x: Number((base * 1.5).toFixed(3)), y: 100 });
     } else {
       const interval = (maxVal - minVal) / (steps - 1);
-      
-      // Let's also include a starting point at 0% slightly before the minVal
       const padding = interval * 0.5;
       dataPoints.push({ x: Math.max(0, minVal - padding), y: 0 });
 
       for (let i = 0; i < steps; i++) {
         const threshold = minVal + i * interval;
-        // count how many elements are <= threshold
         const count = allVals.filter(v => v <= threshold).length;
         const percentage = (count / allVals.length) * 100;
         dataPoints.push({ x: Number(threshold.toFixed(3)), y: Number(percentage.toFixed(1)) });
       }
     }
 
-    const titleText = seasonalChartTitle ? `${seasonalChartTitle} - ${season}` : `${activeParam} Cumulative Frequency (Ogive) Curve - ${season}`;
-    const isRscOrSar = activeParam === "SAR" || activeParam === "RSC";
-    const chartFontFamily = isRscOrSar ? "'Times New Roman', Times, serif" : fontFamily;
+    const defaultTitle = `${activeParam} Cumulative Frequency (Ogive) Curve - ${season}`;
+    const titleText = seasonalChartTitle ? `${seasonalChartTitle} - ${season}` : defaultTitle;
+    const chartFontFamily = "'Times New Roman', Times, serif";
 
-    const fontStyle = {
+    const titleStyle = {
       fontFamily: chartFontFamily,
-      fontSize: "12px",
-      fontWeight: fontBold ? "bold" : "normal",
+      fontSize: "24px",
+      fontWeight: "bold" as const,
       color: chartTheme === "theme-dark" ? "#f8fafc" : "#1e293b",
     };
+
+    const axisTitleStyle = {
+      fontFamily: chartFontFamily,
+      fontSize: "22px",
+      fontWeight: "bold" as const,
+      color: chartTheme === "theme-dark" ? "#cbd5e1" : "#1e293b",
+    };
+
+    const axisLabelStyle = {
+      fontFamily: chartFontFamily,
+      fontSize: "20px",
+      color: chartTheme === "theme-dark" ? "#94a3b8" : "#334155",
+    };
+
+    const plotLineLabelStyle = {
+      fontFamily: chartFontFamily,
+      fontSize: "20px",
+      fontWeight: "bold" as const,
+    };
+
+    const strokeColor = "#4f46e5";
 
     const options: Highcharts.Options = {
       chart: {
@@ -1126,84 +1167,94 @@ export default function DetailedView({
       },
       title: {
         text: titleText,
+        style: titleStyle,
+      },
+      subtitle: {
+        text: "💡 Click & drag mouse across chart to relocate / displace level threshold lines dynamically",
         style: {
-          ...fontStyle,
+          fontFamily: chartFontFamily,
           fontSize: "13px",
-          fontWeight: "800",
-        },
+          fontWeight: "bold",
+          color: "#0284c7"
+        }
       },
       xAxis: {
+        type: "linear",
         title: {
           text: seasonalXAxisTitle || `${activeParam}${activeConfig.unit ? ` (${activeConfig.unit})` : ""}`,
-          style: fontStyle,
+          style: axisTitleStyle,
         },
-        labels: { style: fontStyle },
+        labels: { style: axisLabelStyle },
         gridLineWidth: 1,
         gridLineDashStyle: "Dash",
         gridLineColor: chartTheme === "theme-dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)",
         plotLines: [
           {
+            id: "p50-line",
             color: "#2563eb",
             dashStyle: "Dash",
-            width: 1.5,
-            value: p50,
+            width: 2.0,
+            value: p50 > 0 ? p50 : undefined,
             zIndex: 4,
             label: {
               text: `Median (P50) = ${p50.toFixed(1)}`,
               verticalAlign: "top",
               align: "left",
               rotation: 0,
-              y: 15,
-              x: 5,
-              style: { color: "#2563eb", fontWeight: "bold", fontSize: "10px", fontFamily: chartFontFamily, backgroundColor: "rgba(255,255,255,0.7)" }
+              y: 35,
+              x: 10,
+              style: { ...plotLineLabelStyle, color: "#2563eb" }
             }
           },
           {
+            id: "p75-line",
             color: "#8b5cf6",
             dashStyle: "Dash",
-            width: 1.5,
-            value: p75,
+            width: 2.0,
+            value: p75 > 0 ? p75 : undefined,
             zIndex: 4,
             label: {
               text: `P75 = ${p75.toFixed(1)}`,
               verticalAlign: "top",
-              align: "left",
+              align: "right",
               rotation: 0,
-              y: 30,
-              x: 5,
-              style: { color: "#8b5cf6", fontWeight: "bold", fontSize: "10px", fontFamily: chartFontFamily, backgroundColor: "rgba(255,255,255,0.7)" }
+              y: 70,
+              x: -10,
+              style: { ...plotLineLabelStyle, color: "#8b5cf6" }
             }
           },
           {
+            id: "p90-line",
             color: "#f97316",
             dashStyle: "Dash",
-            width: 1.5,
-            value: p90,
+            width: 2.0,
+            value: p90 > 0 ? p90 : undefined,
             zIndex: 4,
             label: {
               text: `P90 = ${p90.toFixed(1)}`,
               verticalAlign: "top",
               align: "left",
               rotation: 0,
-              y: 45,
-              x: 5,
-              style: { color: "#f97316", fontWeight: "bold", fontSize: "10px", fontFamily: chartFontFamily, backgroundColor: "rgba(255,255,255,0.7)" }
+              y: 105,
+              x: 10,
+              style: { ...plotLineLabelStyle, color: "#f97316" }
             }
           },
           {
+            id: "p95-line",
             color: "#dc2626",
             dashStyle: "Dash",
-            width: 1.5,
-            value: p95,
+            width: 2.0,
+            value: p95 > 0 ? p95 : undefined,
             zIndex: 4,
             label: {
               text: `P95 = ${p95.toFixed(1)}`,
               verticalAlign: "top",
-              align: "left",
+              align: "right",
               rotation: 0,
-              y: 60,
-              x: 5,
-              style: { color: "#dc2626", fontWeight: "bold", fontSize: "10px", fontFamily: chartFontFamily, backgroundColor: "rgba(255,255,255,0.7)" }
+              y: 140,
+              x: -10,
+              style: { ...plotLineLabelStyle, color: "#dc2626" }
             }
           }
         ]
@@ -1211,10 +1262,10 @@ export default function DetailedView({
       yAxis: {
         title: {
           text: seasonalYAxisTitle || "Cumulative Percentage (%)",
-          style: fontStyle,
+          style: axisTitleStyle,
         },
         labels: {
-          style: fontStyle,
+          style: axisLabelStyle,
           format: "{value}%",
         },
         min: 0,
@@ -1231,7 +1282,7 @@ export default function DetailedView({
           const unit = activeConfig.unit ? ` ${activeConfig.unit}` : "";
           let s = `<div style="font-family: ${chartFontFamily}; font-size: 11px; padding: 4px;">`;
           s += `<small style="font-size: 10px; color: #64748b;">${activeParam} value &le; <b>${point.x}${unit}</b></small><br/>`;
-          s += `<span style="color:#4f46e5;">\u25CF</span> Cumulative Compliance: <b>${point.y}%</b> of samples<br/>`;
+          s += `<span style="color:${strokeColor};">\u25CF</span> Cumulative Compliance: <b>${point.y}%</b> of samples<br/>`;
           s += `<hr style="margin: 6px 0; border: 0; border-top: 1px solid #e2e8f0;"/>`;
           s += `<strong style="color: #0f172a; display: block; margin-bottom: 3px;">Statistical Percentiles:</strong>`;
           s += `<span style="color: #2563eb;">\u25CF</span> Median (P50): <b>${p50.toFixed(2)}${unit}</b><br/>`;
@@ -1248,12 +1299,12 @@ export default function DetailedView({
             enabled: true,
             radius: 4,
             symbol: "circle",
-            fillColor: "#4f46e5",
+            fillColor: strokeColor,
             lineWidth: 2,
             lineColor: "#ffffff",
           },
           lineWidth: 3,
-          color: "#4f46e5",
+          color: strokeColor,
         },
       },
       series: [
@@ -1266,7 +1317,76 @@ export default function DetailedView({
       credits: { enabled: false },
     };
 
-    Highcharts.chart(containerId, options);
+    const chartObj = Highcharts.chart(containerId, options);
+
+    // Attach interactive mouse dragging & displacement for level lines
+    let isDraggingLine = false;
+
+    const updateInteractiveLine = (evt: MouseEvent) => {
+      if (!chartObj.xAxis || !chartObj.xAxis[0]) return;
+      const xAxis = chartObj.xAxis[0];
+      const e = chartObj.pointer.normalize(evt);
+
+      if (e.chartX >= chartObj.plotLeft && e.chartX <= chartObj.plotLeft + chartObj.plotWidth) {
+        const rawVal = xAxis.toValue(e.chartX);
+        if (isNaN(rawVal) || rawVal <= 0) return;
+
+        const count = allVals.filter(v => v <= rawVal).length;
+        const pct = ((count / allVals.length) * 100).toFixed(1);
+        const valFormatted = rawVal < 1 ? rawVal.toFixed(3) : rawVal < 100 ? rawVal.toFixed(2) : rawVal.toFixed(1);
+        const unitStr = activeConfig.unit ? ` ${activeConfig.unit}` : "";
+
+        xAxis.removePlotLine("interactive-drag-line");
+        xAxis.addPlotLine({
+          id: "interactive-drag-line",
+          value: rawVal,
+          color: "#e11d48",
+          width: 3.5,
+          dashStyle: "Solid",
+          zIndex: 10,
+          label: {
+            text: `📍 Level: ${valFormatted}${unitStr} (${pct}% Compliance)`,
+            verticalAlign: "top",
+            align: "center",
+            rotation: 0,
+            y: 5,
+            style: {
+              color: "#e11d48",
+              fontWeight: "bold",
+              fontSize: "13px",
+              fontFamily: chartFontFamily,
+              backgroundColor: "#ffffff",
+              padding: "4px 8px",
+              border: "2px solid #e11d48",
+              borderRadius: "6px"
+            }
+          }
+        });
+      }
+    };
+
+    const containerEl = chartObj.container;
+    if (containerEl) {
+      containerEl.style.cursor = "crosshair";
+
+      containerEl.onmousedown = (evt) => {
+        isDraggingLine = true;
+        updateInteractiveLine(evt);
+      };
+
+      containerEl.onmousemove = (evt) => {
+        if (isDraggingLine) {
+          updateInteractiveLine(evt);
+        }
+      };
+
+      const stopDragging = () => {
+        isDraggingLine = false;
+      };
+
+      containerEl.onmouseup = stopDragging;
+      containerEl.onmouseleave = stopDragging;
+    }
   };
 
   useEffect(() => {
@@ -1298,55 +1418,353 @@ export default function DetailedView({
     return () => clearTimeout(timer);
   }, [statTab, seasonalGroupedData, activeParam, fontFamily, reportingLevel, colorAcc, colorPerm, colorFail, seasonalChartTitle, seasonalXAxisTitle, seasonalYAxisTitle]);
 
-  const drawExceedancePlot = (containerId: string) => {
-    const { categories, series } = exceedanceChartData;
+  const exceedanceBarChartData = React.useMemo(() => {
+    const dataToUse = groupScope === "national" ? (allRawData || rawData) : rawData;
+    if (!dataToUse || dataToUse.length === 0 || !activeParam || !activeConfig) {
+      return { statsList: [], groupKeyName: reportingLevel };
+    }
+
+    let filtered = dataToUse;
+    if (groupScope === "selected") {
+      if (multiSelectMode) {
+        if (selectedStatesList.length > 0) {
+          filtered = filtered.filter((d) => selectedStatesList.includes(String(d[headers.state || ""] || "").trim()));
+        }
+        if (selectedDistrictsList.length > 0) {
+          filtered = filtered.filter((d) => selectedDistrictsList.includes(String(d[headers.district || ""] || "").trim()));
+        }
+      } else {
+        if (selectedState) {
+          filtered = filtered.filter((d) => String(d[headers.state || ""] || "").trim() === selectedState);
+        }
+        if (selectedDistrict) {
+          filtered = filtered.filter((d) => String(d[headers.district || ""] || "").trim() === selectedDistrict);
+        }
+      }
+    }
+
+    const groupKey =
+      groupScope === "national"
+        ? headers.state
+        : reportingLevel === "State"
+        ? headers.state
+        : reportingLevel === "District"
+        ? headers.district
+        : headers.block;
+
+    if (!groupKey) return { statsList: [], groupKeyName: reportingLevel };
+
+    const groupMap: Record<string, number[]> = {};
+    filtered.forEach((row) => {
+      const gName = String(row[groupKey] || "Unknown").trim();
+      if (!gName || gName === "Unknown") return;
+      const val = getParamVal(row, activeParam);
+      if (!isNaN(val)) {
+        if (!groupMap[gName]) groupMap[gName] = [];
+        groupMap[gName].push(val);
+      }
+    });
+
+    const statsList: Array<{
+      name: string;
+      total: number;
+      failCount: number;
+      pctFail: number;
+      accCount: number;
+    }> = [];
+
+    Object.entries(groupMap).forEach(([gName, vals]) => {
+      const total = vals.length;
+      let failCount = 0;
+      vals.forEach((v) => {
+        if (activeParam === "SAR") {
+          if (v > 26) failCount++;
+        } else if (activeConfigKey === "pH") {
+          if (v < activeConfig.b1 || v > activeConfig.b2) failCount++;
+        } else if (activeConfig.b1 === activeConfig.b2) {
+          if (v > activeConfig.b1) failCount++;
+        } else {
+          if (v > activeConfig.b2) failCount++;
+        }
+      });
+
+      const pctFail = total > 0 ? (failCount / total) * 100 : 0;
+      const accCount = total - failCount;
+
+      statsList.push({
+        name: gName,
+        total,
+        failCount,
+        pctFail,
+        accCount
+      });
+    });
+
+    let resultList = statsList;
+    if (exceedanceFilter === "affected") {
+      resultList = resultList.filter((item) => item.failCount > 0);
+    }
+
+    return {
+      groupKeyName: groupScope === "national" ? "State" : reportingLevel,
+      statsList: resultList
+    };
+  }, [rawData, allRawData, groupScope, exceedanceFilter, activeParam, selectedState, selectedDistrict, reportingLevel, headers, headerMap, activeConfig, activeConfigKey, multiSelectMode, selectedStatesList, selectedDistrictsList, getParamVal]);
+
+  const drawExceedanceBarPlot = (containerId: string) => {
     const containerEl = document.getElementById(containerId);
     if (!containerEl) return;
 
-    if (categories.length === 0) {
-      containerEl.innerHTML = `<div class="h-full flex items-center justify-center text-slate-400 font-bold p-8">No groups match the exceedance criteria.</div>`;
+    const { statsList, groupKeyName } = exceedanceBarChartData;
+
+    if (!statsList || statsList.length === 0) {
+      containerEl.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-slate-400 font-bold p-8 text-center min-h-[300px]"><p class="text-sm">No partially affected ${groupKeyName}s found for ${activeParam}.</p><span class="text-xs font-normal text-slate-400 mt-1">Try switching Affected Location Filter to 'All Locations' or selecting a different location.</span></div>`;
       return;
+    }
+
+    const EXCEEDANCE_PALETTE = [
+      "#4f46e5", "#059669", "#e11d48", "#d97706", "#8b5cf6",
+      "#0284c7", "#ca8a04", "#0d9488", "#c026d3", "#ea580c",
+      "#2563eb", "#16a34a", "#7c3aed", "#db2777", "#0891b2",
+      "#65a30d", "#3b82f6", "#10b981", "#f43f5e", "#f59e0b",
+      "#a855f7", "#06b6d4", "#eab308", "#14b8a6"
+    ];
+
+    const getSeverityColor = (pct: number) => {
+      if (pct === 0) return "#10b981";
+      if (pct <= 10) return "#eab308";
+      if (pct <= 25) return "#f97316";
+      return "#e11d48";
+    };
+
+    const sorted = [...statsList].sort((a, b) => {
+      let cmp = 0;
+      if (exceedanceSort === "no") cmp = b.failCount - a.failCount;
+      else if (exceedanceSort === "pct") cmp = b.pctFail - a.pctFail;
+      else if (exceedanceSort === "total") cmp = b.total - a.total;
+      else cmp = a.name.localeCompare(b.name);
+
+      if (exceedanceOrder === "asc") return -cmp;
+      return cmp;
+    });
+
+    let topLimit = sorted.length;
+    if (exceedanceTopN === "5") topLimit = 5;
+    else if (exceedanceTopN === "10") topLimit = 10;
+    else if (exceedanceTopN === "15") topLimit = 15;
+    else if (exceedanceTopN === "20") topLimit = 20;
+    else if (exceedanceTopN === "custom") topLimit = Math.max(1, exceedanceCustomN || 10);
+
+    const finalSorted = sorted.slice(0, topLimit);
+
+    const categories = finalSorted.map((s) => s.name);
+    const failPcts = finalSorted.map((s) => parseFloat(s.pctFail.toFixed(2)));
+    const totals = finalSorted.map((s) => s.total);
+
+    const failCountsFormatted = finalSorted.map((s, idx) => {
+      let c = colorFail || "#e11d48";
+      if (exceedanceColorMode === "distinct") {
+        c = EXCEEDANCE_PALETTE[idx % EXCEEDANCE_PALETTE.length];
+      } else if (exceedanceColorMode === "severity") {
+        c = getSeverityColor(s.pctFail);
+      }
+      return { y: s.failCount, color: c, name: s.name };
+    });
+
+    const failPctsFormatted = finalSorted.map((s, idx) => {
+      let c = colorFail || "#e11d48";
+      if (exceedanceColorMode === "distinct") {
+        c = EXCEEDANCE_PALETTE[idx % EXCEEDANCE_PALETTE.length];
+      } else if (exceedanceColorMode === "severity") {
+        c = getSeverityColor(s.pctFail);
+      }
+      return { y: parseFloat(s.pctFail.toFixed(2)), color: c, name: s.name };
+    });
+
+    const isRscOrSar = activeParam === "SAR" || activeParam === "RSC";
+    const chartFontFamily = isRscOrSar ? "'Times New Roman', Times, serif" : fontFamily;
+
+    const limitStr = getExceedanceLimitStr(activeConfigKey, activeConfig);
+    const titleText = exceedanceChartTitle || `Exceedance Analysis for ${activeParam} (${exceedanceFilter === "affected" ? "Partially Affected " : ""}${groupKeyName}s)`;
+    const rankCriteriaLabel = exceedanceSort === "no" ? "Exceeding Samples (NO.)" : exceedanceSort === "pct" ? "Exceedance Rate (%)" : exceedanceSort === "total" ? "Total Samples" : "Location Name";
+    const topNLabel = exceedanceTopN === "all" ? `All ${statsList.length}` : `Top ${finalSorted.length} (of ${statsList.length})`;
+    const subTitleText = `Permissible Limit: ${limitStr} | Showing ${topNLabel} ${groupKeyName}s ranked by ${rankCriteriaLabel} (${exceedanceOrder === "desc" ? "Decreasing" : "Increasing"} Order)`;
+
+    let seriesData: any[] = [];
+    let yAxisData: any[] = [];
+
+    if (exceedanceViewMode === "dual") {
+      yAxisData = [
+        {
+          title: {
+            text: "Number of Exceeding Samples (NO.)",
+            style: { color: "#e11d48", fontWeight: "bold", fontFamily: chartFontFamily }
+          },
+          labels: { style: { color: "#e11d48", fontFamily: chartFontFamily } },
+          min: 0,
+          gridLineWidth: 1,
+          gridLineDashStyle: "Dash"
+        },
+        {
+          title: {
+            text: "Percentage Exceeding Limit (%)",
+            style: { color: "#4f46e5", fontWeight: "bold", fontFamily: chartFontFamily }
+          },
+          labels: { format: "{value}%", style: { color: "#4f46e5", fontFamily: chartFontFamily } },
+          min: 0,
+          max: 100,
+          opposite: true,
+          gridLineWidth: 0
+        }
+      ];
+
+      seriesData = [
+        {
+          name: "Exceeding Samples (NO.)",
+          type: "column",
+          yAxis: 0,
+          data: failCountsFormatted,
+          tooltip: { valueSuffix: " samples" },
+          dataLabels: {
+            enabled: true,
+            format: "{point.y}",
+            style: { fontSize: "10px", fontWeight: "bold" }
+          }
+        },
+        {
+          name: "Exceedance Rate (%)",
+          type: "spline",
+          yAxis: 1,
+          data: failPcts,
+          color: "#312e81",
+          marker: { enabled: true, radius: 5, fillColor: "#4f46e5", lineWidth: 2, lineColor: "#ffffff" },
+          lineWidth: 3,
+          tooltip: { valueSuffix: "%" },
+          dataLabels: {
+            enabled: true,
+            format: "{point.y:.1f}%",
+            style: { fontSize: "10px", fontWeight: "bold", color: "#312e81" }
+          }
+        }
+      ];
+    } else if (exceedanceViewMode === "grouped") {
+      yAxisData = [
+        {
+          title: { text: "Number of Samples", style: { fontWeight: "bold", fontFamily: chartFontFamily } },
+          min: 0,
+          gridLineWidth: 1
+        }
+      ];
+
+      seriesData = [
+        {
+          name: "Exceeding Samples (NO.)",
+          type: "column",
+          data: failCountsFormatted,
+          dataLabels: { enabled: true, format: "{point.y}" }
+        },
+        {
+          name: "Total Samples Analysed",
+          type: "column",
+          data: totals,
+          color: "#94a3b8",
+          dataLabels: { enabled: true, format: "{point.y}" }
+        }
+      ];
+    } else if (exceedanceViewMode === "pct") {
+      yAxisData = [
+        {
+          title: { text: "Percentage Exceeding Limit (%)", style: { color: "#4f46e5", fontWeight: "bold", fontFamily: chartFontFamily } },
+          min: 0,
+          max: 100,
+          labels: { format: "{value}%" }
+        }
+      ];
+
+      seriesData = [
+        {
+          name: "Exceedance Rate (%)",
+          type: "column",
+          data: failPctsFormatted,
+          dataLabels: {
+            enabled: true,
+            format: "{point.y:.1f}%",
+            style: { fontSize: "10px", fontWeight: "bold" }
+          }
+        }
+      ];
+    } else {
+      yAxisData = [
+        {
+          title: { text: "Number of Exceeding Samples (NO.)", style: { color: "#e11d48", fontWeight: "bold", fontFamily: chartFontFamily } },
+          min: 0
+        }
+      ];
+
+      seriesData = [
+        {
+          name: "Exceeding Samples (NO.)",
+          type: "column",
+          data: failCountsFormatted,
+          dataLabels: {
+            enabled: true,
+            format: "{point.y}",
+            style: { fontSize: "10px", fontWeight: "bold" }
+          }
+        }
+      ];
     }
 
     const options: Highcharts.Options = {
       chart: {
-        type: "column",
         backgroundColor: "transparent"
       },
+      colors: EXCEEDANCE_PALETTE,
       title: {
-        text: exceedanceChartTitle || `Percentage of Samples Above Permissible Limit - ${activeParam}`,
-        style: { fontWeight: "black", color: "#1e293b", fontSize: "14px", fontFamily: fontFamily }
+        text: titleText,
+        style: { fontWeight: "bold", color: "#1e293b", fontSize: "14px", fontFamily: chartFontFamily }
       },
       subtitle: {
-        text: `Comparing across detected seasons/years for ${reportingLevel === "State" ? "States" : reportingLevel === "District" ? "Districts" : "Blocks"}`,
-        style: { fontSize: "11px", color: "#64748b", fontFamily: fontFamily }
+        text: subTitleText,
+        style: { fontSize: "11px", color: "#64748b", fontFamily: chartFontFamily }
       },
       xAxis: {
         categories: categories,
-        title: { text: exceedanceXAxisTitle || (groupScope === "national" ? "State Name" : reportingLevel === "State" ? "State" : reportingLevel === "District" ? "District" : "Block") },
-        labels: { style: { fontWeight: "600", fontSize: "10px" } }
+        title: {
+          text: exceedanceXAxisTitle || groupKeyName,
+          style: { fontWeight: "bold", fontFamily: chartFontFamily }
+        },
+        labels: {
+          style: { fontWeight: "600", fontSize: "10px", fontFamily: chartFontFamily }
+        }
       },
-      yAxis: {
-        title: { text: exceedanceYAxisTitle || "Percentage Exceeding Limit (%)" },
-        max: 100,
-        labels: { format: "{value}%" }
-      },
+      yAxis: yAxisData as any,
       tooltip: {
-        headerFormat: "<b>{point.key}</b><br/>",
-        pointFormat: "{series.name}: <b>{point.y:.1f}% samples</b> exceeding limit"
+        shared: true,
+        useHTML: true,
+        formatter: function (this: any) {
+          const pointIdx = this.points ? this.points[0].point.index : this.point.index;
+          const item = sorted[pointIdx];
+          if (!item) return "";
+          let s = `<div style="font-family: ${chartFontFamily}; padding: 4px; font-size: 11px;">`;
+          s += `<strong style="font-size: 12px; color: #0f172a;">${item.name} (${groupKeyName})</strong><br/>`;
+          s += `<span style="color: #64748b;">Parameter: <b>${activeParam}</b> (Limit: ${limitStr})</span><br/>`;
+          s += `<hr style="margin: 4px 0; border: 0; border-top: 1px solid #e2e8f0;"/>`;
+          s += `<span style="color: #e11d48;">\u25CF</span> Exceeding Samples (NO.): <b style="color: #e11d48; font-size: 12px;">${item.failCount}</b> / ${item.total}<br/>`;
+          s += `<span style="color: #4f46e5;">\u25CF</span> Exceedance Rate (%): <b style="color: #4f46e5; font-size: 12px;">${item.pctFail.toFixed(2)}%</b><br/>`;
+          s += `<span style="color: #10b981;">\u25CF</span> Compliant Samples: <b>${item.accCount}</b> (${(100 - item.pctFail).toFixed(2)}%)<br/>`;
+          s += `</div>`;
+          return s;
+        }
       },
       plotOptions: {
         column: {
-          dataLabels: {
-            enabled: true,
-            format: "{point.y:.1f}%",
-            style: { fontSize: "9px" }
-          },
-          borderRadius: 4
+          borderRadius: 4,
+          borderWidth: 0,
+          colorByPoint: exceedanceColorMode === "distinct"
         }
       },
-      colors: ["#6366f1", "#f59e0b", "#10b981", "#ec4899", "#8b5cf6"],
-      series: series as any,
+      series: seriesData,
       credits: { enabled: false }
     };
 
@@ -1356,10 +1774,11 @@ export default function DetailedView({
   useEffect(() => {
     if (rawData.length === 0) return;
     const timer = setTimeout(() => {
-      drawExceedancePlot("exceedance-rate-chart");
+      drawExceedanceBarPlot("main-exceedance-bar-chart");
+      drawExceedanceBarPlot("stat-exceedance-bar-chart");
     }, 100);
     return () => clearTimeout(timer);
-  }, [exceedanceChartData, fontFamily, groupScope, exceedanceFilter, exceedanceChartTitle, exceedanceXAxisTitle, exceedanceYAxisTitle]);
+  }, [exceedanceBarChartData, exceedanceSort, exceedanceOrder, exceedanceColorMode, exceedanceViewMode, exceedanceTopN, exceedanceCustomN, fontFamily, groupScope, exceedanceFilter, exceedanceChartTitle, exceedanceXAxisTitle, colorFail, activeParam, statTab]);
 
   // Process data whenever inputs change
   useEffect(() => {
@@ -1654,11 +2073,11 @@ export default function DetailedView({
     
     const isRscOrSar = activeParam === "SAR" || activeParam === "RSC";
     const chartFontFamily = isRscOrSar ? "'Times New Roman', Times, serif" : fontFamily;
-    const chartTitleFontSize = isRscOrSar ? "12pt" : `${fontSize + 6}px`;
+    const chartTitleFontSize = isRscOrSar ? "24pt" : `${(fontSize + 6) * 2}px`; // Increased by 100% (doubled)
 
     const fontStyle = {
       fontFamily: chartFontFamily,
-      fontSize: isRscOrSar ? "12pt" : `${fontSize}px`,
+      fontSize: isRscOrSar ? "24pt" : `${fontSize * 2}px`,
       fontWeight: fontBold ? "bold" : "normal",
       color: chartTheme === "theme-dark" ? "#f8fafc" : "#1e293b",
     };
@@ -1668,6 +2087,10 @@ export default function DetailedView({
         type: "pie",
         options3d: { enabled: true, alpha: 45, beta: 0 },
         backgroundColor: "transparent",
+        spacingTop: 15,
+        spacingBottom: 15,
+        spacingLeft: 10,
+        spacingRight: 10,
       },
       exporting: {
         buttons: {
@@ -1685,37 +2108,38 @@ export default function DetailedView({
         },
       },
       tooltip: {
-        style: { fontFamily: chartFontFamily },
+        style: { fontFamily: chartFontFamily, fontSize: "16px" },
         pointFormat: "<b>{point.y} samples</b> ({point.percentage:.1f}%)",
       },
       plotOptions: {
         pie: {
-          innerSize: "55%", // Perfect chunky ring structure matching premium 3D design
+          size: "55%", // Reduced donut size by 30% (from 80% to 55%) to leave space for 100% enlarged labels
+          innerSize: "38%",
           depth: 50,
-          borderWidth: 2, // Highlight each 3D slice with a crisp boundary line
-          borderColor: chartTheme === "theme-dark" ? "#1e293b" : "#ffffff", // Perfectly match the theme's background card
-          slicedOffset: 15,
+          borderWidth: 2,
+          borderColor: chartTheme === "theme-dark" ? "#1e293b" : "#ffffff",
+          slicedOffset: 20,
           dataLabels: {
             enabled: true,
             useHTML: true,
             format: isRscOrSar
-              ? `<div style="text-align: center; line-height: 1.4; padding: 4px; font-family: 'Times New Roman', Times, serif; font-size: 12pt;">
-                  <span style="font-weight: 700; color: {point.color}; text-transform: none;">{point.name}</span><br/>
-                  <span style="font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
-                  <span style="font-weight: 500; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
+              ? `<div style="text-align: center; line-height: 1.4; padding: 4px; font-family: 'Times New Roman', Times, serif;">
+                  <span style="font-size: 22px; font-weight: 700; color: {point.color}; text-transform: none;">{point.name}</span><br/>
+                  <span style="font-size: 28px; font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
+                  <span style="font-size: 22px; font-weight: 600; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
                 </div>`
               : `<div style="text-align: center; line-height: 1.4; padding: 4px; font-family: ${fontFamily};">
-                  <span style="font-size: 11px; font-weight: 700; color: {point.color}; text-transform: none; letter-spacing: 0.6px;">{point.name}</span><br/>
-                  <span style="font-size: 14px; font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
-                  <span style="font-size: 11px; font-weight: 500; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
+                  <span style="font-size: 22px; font-weight: 700; color: {point.color}; text-transform: none; letter-spacing: 0.6px;">{point.name}</span><br/>
+                  <span style="font-size: 28px; font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
+                  <span style="font-size: 22px; font-weight: 600; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
                 </div>`,
             style: {
               fontFamily: chartFontFamily,
-              fontSize: isRscOrSar ? "12pt" : `${fontSize}px`,
+              fontSize: isRscOrSar ? "24pt" : `${fontSize * 2}px`, // Doubled by 100%
               textOutline: "none",
             },
-            connectorWidth: 1.5,
-            connectorPadding: 4,
+            connectorWidth: 2,
+            connectorPadding: 6,
           },
         },
       },
@@ -1747,7 +2171,7 @@ export default function DetailedView({
                 plotBackgroundColor: "transparent",
               },
             };
-            const base64 = await generateOfflineChartBase64(transparentOptions as any, 1400, 900);
+            const base64 = await generateOfflineChartBase64(transparentOptions as any, 1800, 1000);
             if (base64) {
               setSharedBulletinMaps((prev) => ({
                 ...prev,
@@ -1881,41 +2305,47 @@ export default function DetailedView({
         options3d: { enabled: true, alpha: 45, beta: 0 },
         backgroundColor: "transparent",
         plotBackgroundColor: "transparent",
+        spacingTop: 15,
+        spacingBottom: 15,
+        spacingLeft: 10,
+        spacingRight: 10,
       },
       title: {
         text: titleText,
         style: {
           fontFamily,
-          fontSize: `${fontSize + 6}px`,
+          fontSize: `${(fontSize + 6) * 2}px`, // Increased by 100% (doubled)
           fontWeight: "800",
           color: chartTheme === "theme-dark" ? "#f8fafc" : "#1e293b",
         },
       },
       tooltip: {
-        style: { fontFamily },
+        style: { fontFamily, fontSize: "16px" },
         pointFormat: "<b>{point.y} samples</b> ({point.percentage:.1f}%)",
       },
       plotOptions: {
         pie: {
-          innerSize: "55%",
+          size: "55%", // Reduced donut size by 30% (from 80% to 55%)
+          innerSize: "38%",
           depth: 50,
           borderWidth: 2,
           borderColor: "transparent",
-          slicedOffset: 15,
+          slicedOffset: 20,
           dataLabels: {
             enabled: true,
             useHTML: true,
             format: `<div style="text-align: center; line-height: 1.4; padding: 4px; font-family: ${fontFamily};">
-              <span style="font-size: 11px; font-weight: 700; color: {point.color}; text-transform: none; letter-spacing: 0.6px;">{point.name}</span><br/>
-              <span style="font-size: 14px; font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
-              <span style="font-size: 11px; font-weight: 500; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
+              <span style="font-size: 22px; font-weight: 700; color: {point.color}; text-transform: none; letter-spacing: 0.6px;">{point.name}</span><br/>
+              <span style="font-size: 28px; font-weight: 800; color: ${chartTheme === "theme-dark" ? "#f8fafc" : "#0f172a"};">{point.percentage:.1f}%</span>
+              <span style="font-size: 22px; font-weight: 600; color: ${chartTheme === "theme-dark" ? "#94a3b8" : "#64748b"};"> ({point.y})</span>
             </div>`,
             style: {
               fontFamily,
+              fontSize: "22px",
               textOutline: "none",
             },
-            connectorWidth: 1.5,
-            connectorPadding: 4,
+            connectorWidth: 2,
+            connectorPadding: 6,
           },
         },
       },
@@ -1930,7 +2360,7 @@ export default function DetailedView({
     };
 
     try {
-      const base64 = await generateOfflineChartBase64(options as any, 1400, 900);
+      const base64 = await generateOfflineChartBase64(options as any, 1800, 1000);
       if (base64) {
         setSharedBulletinMaps((prev) => ({
           ...prev,
@@ -1944,10 +2374,10 @@ export default function DetailedView({
     }
   };
 
-  const sendSeasonalChartToBulletin = async (season: string, tab: "boxplot" | "average" | "violin" | "donut" | "ogive") => {
+  const sendSeasonalChartToBulletin = async (season: string, tab: "boxplot" | "average" | "violin" | "donut" | "ogive" | "exceedance") => {
     if (!setSharedBulletinMaps) return;
     const idSafeSeason = season.replace(/\s+/g, "-");
-    const containerId = `${tab}-chart-${idSafeSeason}`;
+    const containerId = tab === "exceedance" ? "stat-exceedance-bar-chart" : `${tab}-chart-${idSafeSeason}`;
     const containerEl = document.getElementById(containerId);
     if (!containerEl) return;
 
@@ -1967,7 +2397,7 @@ export default function DetailedView({
       };
       const base64 = await generateOfflineChartBase64(reportOptions as any, 1200, 750);
       if (base64) {
-        const key = `sent_chart_${tab}_${season.replace(/[^a-zA-Z0-9]/g, "_")}`;
+        const key = `sent_chart_${tab}_${activeParam}_${season.replace(/[^a-zA-Z0-9]/g, "_")}`;
         setSharedBulletinMaps((prev) => ({
           ...prev,
           [key]: base64,
@@ -2014,7 +2444,7 @@ export default function DetailedView({
     `;
 
     uniquePeriods.forEach((period) => {
-      const colsCount = isSar ? 8 : (activeConfigKey === "pH" || activeConfig.b1 === activeConfig.b2 ? 6 : 7);
+      const colsCount = isSar ? 11 : (activeConfigKey === "pH" || activeConfig.b1 === activeConfig.b2 ? 7 : 9);
       html += `
         <th colspan="${colsCount}" style="border: 1px solid #c7d2fe; padding: 6px; font-weight: bold; background-color: #e0e7ff; color: #4338ca; text-transform: uppercase;">
           ${period}
@@ -2033,22 +2463,29 @@ export default function DetailedView({
       `;
       if (isSar) {
         html += `
-          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #059669; background-color: #ecfdf5;">&le;10</th>
-          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #d97706; background-color: #fef3c7;">&gt;10-18</th>
-          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #ea580c; background-color: #fff7ed;">&gt;18-26</th>
-          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #e11d48; background-color: #fff1f2;">&gt;26</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #059669; background-color: #ecfdf5;">&le;10 (No)</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #059669; background-color: #ecfdf5;">&le;10 (%)</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #d97706; background-color: #fef3c7;">&gt;10-18 (No)</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #d97706; background-color: #fef3c7;">&gt;10-18 (%)</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #ea580c; background-color: #fff7ed;">&gt;18-26 (No)</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #ea580c; background-color: #fff7ed;">&gt;18-26 (%)</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #e11d48; background-color: #fff1f2;">&gt;26 (No)</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #e11d48; background-color: #fff1f2;">&gt;26 (%)</th>
         `;
       } else {
         html += `
-          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #059669; background-color: #ecfdf5;">${headerLabels.acc.split(" (")[0]}</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #059669; background-color: #ecfdf5;">${headerLabels.acc.split(" (")[0]} (No)</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #059669; background-color: #ecfdf5;">${headerLabels.acc.split(" (")[0]} (%)</th>
         `;
         if (activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2) {
           html += `
-            <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #d97706; background-color: #fef3c7;">${headerLabels.perm.split(" (")[0]}</th>
+            <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #d97706; background-color: #fef3c7;">${headerLabels.perm.split(" (")[0]} (No)</th>
+            <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #d97706; background-color: #fef3c7;">${headerLabels.perm.split(" (")[0]} (%)</th>
           `;
         }
         html += `
-          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #e11d48; background-color: #fff1f2;">${headerLabels.fail.split(" (")[0]}</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #e11d48; background-color: #fff1f2;">No. of samples above permissible limit ${getExceedanceLimitStr(activeConfigKey, activeConfig)}</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; font-size: 8.5pt; color: #e11d48; background-color: #fff1f2;">% of samples above permissible limit ${getExceedanceLimitStr(activeConfigKey, activeConfig)}</th>
         `;
       }
       html += `
@@ -2085,29 +2522,43 @@ export default function DetailedView({
         const minD = isNaN(stats.min) ? "-" : stats.min.toFixed(2);
         const maxD = isNaN(stats.max) ? "-" : stats.max.toFixed(2);
         const avgD = isNaN(stats.avg) ? "-" : stats.avg.toFixed(2);
+        const pctAcc = stats.total ? ((stats.nAcc/stats.total)*100).toFixed(2) : "0.00";
+        const pctPerm = stats.total ? ((stats.nPerm/stats.total)*100).toFixed(2) : "0.00";
+        const pctFail = stats.total ? ((stats.nFail/stats.total)*100).toFixed(2) : "0.00";
 
         html += `
           <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; font-weight: bold;">${stats.total}</td>
         `;
 
         if (isSar) {
+          const pctS1 = stats.total ? ((stats.nSarS1/stats.total)*100).toFixed(2) : "0.00";
+          const pctS2 = stats.total ? ((stats.nSarS2/stats.total)*100).toFixed(2) : "0.00";
+          const pctS3 = stats.total ? ((stats.nSarS3/stats.total)*100).toFixed(2) : "0.00";
+          const pctS4 = stats.total ? ((stats.nSarS4/stats.total)*100).toFixed(2) : "0.00";
           html += `
-            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #059669; background-color: #f0fdf4;">${stats.nSarS1} (${stats.total ? ((stats.nSarS1/stats.total)*100).toFixed(0) : 0}%)</td>
-            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #d97706; background-color: #fffbeb;">${stats.nSarS2} (${stats.total ? ((stats.nSarS2/stats.total)*100).toFixed(0) : 0}%)</td>
-            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #ea580c; background-color: #fffaf0;">${stats.nSarS3} (${stats.total ? ((stats.nSarS3/stats.total)*100).toFixed(0) : 0}%)</td>
-            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #e11d48; background-color: #fff5f5;">${stats.nSarS4} (${stats.total ? ((stats.nSarS4/stats.total)*100).toFixed(0) : 0}%)</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #059669; background-color: #f0fdf4;">${stats.nSarS1}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #059669; background-color: #f0fdf4;">${pctS1}%</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #d97706; background-color: #fffbeb;">${stats.nSarS2}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #d97706; background-color: #fffbeb;">${pctS2}%</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #ea580c; background-color: #fffaf0;">${stats.nSarS3}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #ea580c; background-color: #fffaf0;">${pctS3}%</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #e11d48; background-color: #fff5f5;">${stats.nSarS4}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #e11d48; background-color: #fff5f5;">${pctS4}%</td>
           `;
         } else {
           html += `
-            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #059669; background-color: #f0fdf4;">${stats.nAcc} (${stats.total ? ((stats.nAcc/stats.total)*100).toFixed(0) : 0}%)</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #059669; background-color: #f0fdf4;">${stats.nAcc}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #059669; background-color: #f0fdf4;">${pctAcc}%</td>
           `;
           if (activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2) {
             html += `
-              <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #d97706; background-color: #fffbeb;">${stats.nPerm} (${stats.total ? ((stats.nPerm/stats.total)*100).toFixed(0) : 0}%)</td>
+              <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #d97706; background-color: #fffbeb;">${stats.nPerm}</td>
+              <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #d97706; background-color: #fffbeb;">${pctPerm}%</td>
             `;
           }
           html += `
-            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #e11d48; background-color: #fff5f5;">${stats.nFail} (${stats.total ? ((stats.nFail/stats.total)*100).toFixed(0) : 0}%)</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #e11d48; background-color: #fff5f5;">${stats.nFail}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 5px; text-align: center; color: #e11d48; background-color: #fff5f5;">${pctFail}%</td>
           `;
         }
 
@@ -2139,29 +2590,43 @@ export default function DetailedView({
         const minD = isNaN(stats.min) ? "-" : stats.min.toFixed(2);
         const maxD = isNaN(stats.max) ? "-" : stats.max.toFixed(2);
         const avgD = isNaN(stats.avg) ? "-" : stats.avg.toFixed(2);
+        const pctAcc = stats.total ? ((stats.nAcc/stats.total)*100).toFixed(2) : "0.00";
+        const pctPerm = stats.total ? ((stats.nPerm/stats.total)*100).toFixed(2) : "0.00";
+        const pctFail = stats.total ? ((stats.nFail/stats.total)*100).toFixed(2) : "0.00";
 
         html += `
           <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; font-weight: bold; color: #4338ca;">${stats.total}</td>
         `;
 
         if (isSar) {
+          const pctS1 = stats.total ? ((stats.nSarS1/stats.total)*100).toFixed(2) : "0.00";
+          const pctS2 = stats.total ? ((stats.nSarS2/stats.total)*100).toFixed(2) : "0.00";
+          const pctS3 = stats.total ? ((stats.nSarS3/stats.total)*100).toFixed(2) : "0.00";
+          const pctS4 = stats.total ? ((stats.nSarS4/stats.total)*100).toFixed(2) : "0.00";
           html += `
-            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #059669; background-color: #ecfdf5;">${stats.nSarS1} (${stats.total ? ((stats.nSarS1/stats.total)*100).toFixed(0) : 0}%)</td>
-            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #d97706; background-color: #fef3c7;">${stats.nSarS2} (${stats.total ? ((stats.nSarS2/stats.total)*100).toFixed(0) : 0}%)</td>
-            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #ea580c; background-color: #fff7ed;">${stats.nSarS3} (${stats.total ? ((stats.nSarS3/stats.total)*100).toFixed(0) : 0}%)</td>
-            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #e11d48; background-color: #fff1f2;">${stats.nSarS4} (${stats.total ? ((stats.nSarS4/stats.total)*100).toFixed(0) : 0}%)</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #059669; background-color: #ecfdf5;">${stats.nSarS1}</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #059669; background-color: #ecfdf5;">${pctS1}%</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #d97706; background-color: #fef3c7;">${stats.nSarS2}</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #d97706; background-color: #fef3c7;">${pctS2}%</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #ea580c; background-color: #fff7ed;">${stats.nSarS3}</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #ea580c; background-color: #fff7ed;">${pctS3}%</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #e11d48; background-color: #fff1f2;">${stats.nSarS4}</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #e11d48; background-color: #fff1f2;">${pctS4}%</td>
           `;
         } else {
           html += `
-            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #059669; background-color: #ecfdf5;">${stats.nAcc} (${stats.total ? ((stats.nAcc/stats.total)*100).toFixed(0) : 0}%)</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #059669; background-color: #ecfdf5;">${stats.nAcc}</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #059669; background-color: #ecfdf5;">${pctAcc}%</td>
           `;
           if (activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2) {
             html += `
-              <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #d97706; background-color: #fef3c7;">${stats.nPerm} (${stats.total ? ((stats.nPerm/stats.total)*100).toFixed(0) : 0}%)</td>
+              <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #d97706; background-color: #fef3c7;">${stats.nPerm}</td>
+              <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #d97706; background-color: #fef3c7;">${pctPerm}%</td>
             `;
           }
           html += `
-            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #e11d48; background-color: #fff1f2;">${stats.nFail} (${stats.total ? ((stats.nFail/stats.total)*100).toFixed(0) : 0}%)</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #e11d48; background-color: #fff1f2;">${stats.nFail}</td>
+            <td style="border: 1px solid #c7d2fe; padding: 6px; text-align: center; color: #e11d48; background-color: #fff1f2;">${pctFail}%</td>
           `;
         }
 
@@ -2815,6 +3280,17 @@ export default function DetailedView({
                 <TrendingUp className="w-3.5 h-3.5" />
                 Ogive Curve
               </button>
+              <button
+                onClick={() => setStatTab("exceedance")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statTab === "exceedance"
+                    ? "bg-rose-600 text-white shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                Exceedance Bar Graph (No. & %)
+              </button>
             </div>
           </div>
 
@@ -2878,7 +3354,7 @@ export default function DetailedView({
               <div className="text-left md:text-right">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Status Banner</span>
                 <p className="text-xs font-bold text-slate-600">
-                  Plotting <span className="text-indigo-600">{statTab === "boxplot" ? "Box plots" : statTab === "average" ? "Averages" : statTab === "violin" ? "Violin curves" : statTab === "donut" ? "Donut charts" : "Ogive curves"}</span> for{" "}
+                  Plotting <span className="text-indigo-600">{statTab === "boxplot" ? "Box plots" : statTab === "average" ? "Averages" : statTab === "violin" ? "Violin curves" : statTab === "donut" ? "Donut charts" : statTab === "ogive" ? "Ogive curves" : "Exceedance Bar Graphs"}</span> for{" "}
                   <span className="text-emerald-600">
                     {groupScope === "national"
                       ? "all of India"
@@ -3027,52 +3503,182 @@ export default function DetailedView({
             )}
           </div>
 
-          {/* Dynamic Grid Layout for Seasonal Charts */}
-          {(() => {
-            const seasonsList = Object.keys(seasonalGroupedData).sort();
-            const gridColsClass = seasonsList.length >= 2 ? "grid-cols-1 xl:grid-cols-2" : "grid-cols-1";
-            
-            return (
-              <div className={`grid ${gridColsClass} gap-6`}>
-                {seasonsList.map((season) => {
-                  const idSafeSeason = season.replace(/\s+/g, "-");
-                  return (
-                    <div key={season} className="bg-white/60 p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[420px] backdrop-blur-sm">
-                      <div className="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
-                        <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                          <Circle className="w-2.5 h-2.5 text-indigo-500 fill-indigo-500" />
-                          {season} Season
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {setSharedBulletinMaps && (
-                            <button
-                              onClick={() => sendSeasonalChartToBulletin(season, statTab)}
-                              className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${
-                                sentItems[`sent_chart_${statTab}_${season.replace(/[^a-zA-Z0-9]/g, "_")}`]
-                                  ? "bg-emerald-500 text-white border-emerald-500"
-                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600"
-                              }`}
-                            >
-                              <Send className="w-3 h-3" />
-                              {sentItems[`sent_chart_${statTab}_${season.replace(/[^a-zA-Z0-9]/g, "_")}`] ? "Sent!" : "Send to Report"}
-                            </button>
-                          )}
-                          <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">
-                            {Object.keys(seasonalGroupedData[season] || {}).length} Groups
-                          </span>
-                        </div>
-                      </div>
-                      
-                      <div 
-                        id={`${statTab}-chart-${idSafeSeason}`} 
-                        className="w-full h-[370px] mt-2" 
-                      />
-                    </div>
-                  );
-                })}
+          {/* Dynamic Grid Layout for Seasonal Charts or Exceedance Bar Graph */}
+          {statTab === "exceedance" ? (
+            <div className="bg-white/90 p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col min-h-[480px] backdrop-blur-sm">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 border-b border-slate-100 pb-3">
+                <div>
+                  <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-rose-600" />
+                    Exceedance &amp; Partially Affected Locations Bar Graph ({activeParam})
+                  </h4>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Displaying NO. (number of samples) and Percentage (%) exceeding limits across {exceedanceFilter === "affected" ? "partially affected " : "all "}{exceedanceBarChartData.groupKeyName}s.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {setSharedBulletinMaps && (
+                    <button
+                      onClick={() => sendSeasonalChartToBulletin("All", "exceedance")}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 ${
+                        sentItems[`sent_chart_exceedance_${activeParam}_All`]
+                          ? "bg-emerald-500 text-white border-emerald-500"
+                          : "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
+                      }`}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      {sentItems[`sent_chart_exceedance_${activeParam}_All`] ? "Sent to Report!" : "Send to Annual Report"}
+                    </button>
+                  )}
+                </div>
               </div>
-            );
-          })()}
+
+              {/* Exceedance controls inside chart card */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Display Mode</label>
+                  <select
+                    value={exceedanceViewMode}
+                    onChange={(e) => setExceedanceViewMode(e.target.value as any)}
+                    className="w-full text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="dual">Dual Axis (NO. &amp; %)</option>
+                    <option value="no">Exceeding Samples Count (NO.) Only</option>
+                    <option value="pct">Exceedance Rate (%) Only</option>
+                    <option value="grouped">Grouped Bar (NO. vs Total Samples)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Bar Color Scheme</label>
+                  <select
+                    value={exceedanceColorMode}
+                    onChange={(e) => setExceedanceColorMode(e.target.value as any)}
+                    className="w-full text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="distinct">Distinct Multi-Color per Location</option>
+                    <option value="severity">Severity Heatmap (Green → Yellow → Red)</option>
+                    <option value="uniform">Uniform Theme Color</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Sort Locations By</label>
+                  <select
+                    value={exceedanceSort}
+                    onChange={(e) => setExceedanceSort(e.target.value as any)}
+                    className="w-full text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="no">Exceeding Samples Count (NO.)</option>
+                    <option value="pct">Exceedance Rate (%)</option>
+                    <option value="total">Total Samples Analysed</option>
+                    <option value="name">Location Name (Alphabetical)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Sorting Order</label>
+                  <select
+                    value={exceedanceOrder}
+                    onChange={(e) => setExceedanceOrder(e.target.value as any)}
+                    className="w-full text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="desc">Decreasing (High → Low / Z-A)</option>
+                    <option value="asc">Increasing (Low → High / A-Z)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Top Limit (Top N)</label>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={exceedanceTopN}
+                      onChange={(e) => setExceedanceTopN(e.target.value as any)}
+                      className="w-full text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="all">All Locations</option>
+                      <option value="5">Top 5 {exceedanceBarChartData.groupKeyName}s</option>
+                      <option value="10">Top 10 {exceedanceBarChartData.groupKeyName}s</option>
+                      <option value="15">Top 15 {exceedanceBarChartData.groupKeyName}s</option>
+                      <option value="20">Top 20 {exceedanceBarChartData.groupKeyName}s</option>
+                      <option value="custom">Custom Limit...</option>
+                    </select>
+                    {exceedanceTopN === "custom" && (
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={exceedanceCustomN}
+                        onChange={(e) => setExceedanceCustomN(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-16 text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="N"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Location Filter</label>
+                  <select
+                    value={exceedanceFilter}
+                    onChange={(e) => setExceedanceFilter(e.target.value as any)}
+                    className="w-full text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="affected">Partially Affected Locations Only (Count &gt; 0)</option>
+                    <option value="all">All Locations (Including 0 Exceedances)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div id="stat-exceedance-bar-chart" className="w-full h-[400px]" />
+            </div>
+          ) : (
+            (() => {
+              const seasonsList = Object.keys(seasonalGroupedData).sort();
+              const gridColsClass = seasonsList.length >= 2 ? "grid-cols-1 xl:grid-cols-2" : "grid-cols-1";
+              
+              return (
+                <div className={`grid ${gridColsClass} gap-6`}>
+                  {seasonsList.map((season) => {
+                    const idSafeSeason = season.replace(/\s+/g, "-");
+                    return (
+                      <div key={season} className="bg-white/60 p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[420px] backdrop-blur-sm">
+                        <div className="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
+                          <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <Circle className="w-2.5 h-2.5 text-indigo-500 fill-indigo-500" />
+                            {season} Season
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {setSharedBulletinMaps && (
+                              <button
+                                onClick={() => sendSeasonalChartToBulletin(season, statTab)}
+                                className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${
+                                  sentItems[`sent_chart_${statTab}_${activeParam}_${season.replace(/[^a-zA-Z0-9]/g, "_")}`]
+                                    ? "bg-emerald-500 text-white border-emerald-500"
+                                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600"
+                                }`}
+                              >
+                                <Send className="w-3 h-3" />
+                                {sentItems[`sent_chart_${statTab}_${activeParam}_${season.replace(/[^a-zA-Z0-9]/g, "_")}`] ? "Sent!" : "Send to Report"}
+                              </button>
+                            )}
+                            <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full">
+                              {Object.keys(seasonalGroupedData[season] || {}).length} Groups
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div 
+                          id={`${statTab}-chart-${idSafeSeason}`} 
+                          className="w-full h-[370px] mt-2" 
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()
+          )}
         </div>
       )}
 
@@ -3125,7 +3731,7 @@ export default function DetailedView({
                       {reportingLevel === "State" ? "State Name" : reportingLevel === "District" ? "District Name" : "Block / Tehsil"}
                     </th>
                     {uniquePeriods.map((period) => {
-                      const colsCount = activeParam === "SAR" ? 8 : (activeConfigKey === "pH" || activeConfig.b1 === activeConfig.b2 ? 6 : 7);
+                      const colsCount = activeParam === "SAR" ? 11 : (activeConfigKey === "pH" || activeConfig.b1 === activeConfig.b2 ? 7 : 9);
                       return (
                         <th key={period} colSpan={colsCount} className="p-3 border font-black text-center text-indigo-700 bg-indigo-50 border-indigo-150 uppercase tracking-wider font-extrabold">
                           {period}
@@ -3139,23 +3745,38 @@ export default function DetailedView({
                         <th className="p-2 border font-black text-slate-500 text-center text-[10px] bg-slate-50/50">Total</th>
                         {activeParam === "SAR" ? (
                           <>
-                            <th className="p-2 border font-black text-emerald-600 text-center text-[10px] bg-emerald-50/30">≤10</th>
-                            <th className="p-2 border font-black text-amber-600 text-center text-[10px] bg-amber-50/30">&gt;10-18</th>
-                            <th className="p-2 border font-black text-orange-600 text-center text-[10px] bg-orange-50/30">&gt;18-26</th>
-                            <th className="p-2 border font-black text-rose-600 text-center text-[10px] bg-rose-50/30">&gt;26</th>
+                            <th className="p-2 border font-black text-emerald-600 text-center text-[10px] bg-emerald-50/30">≤10 (No)</th>
+                            <th className="p-2 border font-black text-emerald-600 text-center text-[10px] bg-emerald-50/30">≤10 (%)</th>
+                            <th className="p-2 border font-black text-amber-600 text-center text-[10px] bg-amber-50/30">&gt;10-18 (No)</th>
+                            <th className="p-2 border font-black text-amber-600 text-center text-[10px] bg-amber-50/30">&gt;10-18 (%)</th>
+                            <th className="p-2 border font-black text-orange-600 text-center text-[10px] bg-orange-50/30">&gt;18-26 (No)</th>
+                            <th className="p-2 border font-black text-orange-600 text-center text-[10px] bg-orange-50/30">&gt;18-26 (%)</th>
+                            <th className="p-2 border font-black text-rose-600 text-center text-[10px] bg-rose-50/30">&gt;26 (No)</th>
+                            <th className="p-2 border font-black text-rose-600 text-center text-[10px] bg-rose-50/30">&gt;26 (%)</th>
                           </>
                         ) : (
                           <>
                             <th className="p-2 border font-black text-emerald-600 text-center text-[10px] bg-emerald-50/30">
-                              {getTableHeaderLabels(activeConfigKey, activeConfig).acc.split(" (")[0]}
+                              {getTableHeaderLabels(activeConfigKey, activeConfig).acc.split(" (")[0]} (No)
+                            </th>
+                            <th className="p-2 border font-black text-emerald-600 text-center text-[10px] bg-emerald-50/30">
+                              {getTableHeaderLabels(activeConfigKey, activeConfig).acc.split(" (")[0]} (%)
                             </th>
                             {activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2 && (
-                              <th className="p-2 border font-black text-amber-600 text-center text-[10px] bg-amber-50/30">
-                                {getTableHeaderLabels(activeConfigKey, activeConfig).perm.split(" (")[0]}
-                              </th>
+                              <>
+                                <th className="p-2 border font-black text-amber-600 text-center text-[10px] bg-amber-50/30">
+                                  {getTableHeaderLabels(activeConfigKey, activeConfig).perm.split(" (")[0]} (No)
+                                </th>
+                                <th className="p-2 border font-black text-amber-600 text-center text-[10px] bg-amber-50/30">
+                                  {getTableHeaderLabels(activeConfigKey, activeConfig).perm.split(" (")[0]} (%)
+                                </th>
+                              </>
                             )}
                             <th className="p-2 border font-black text-rose-600 text-center text-[10px] bg-rose-50/30">
-                              {getTableHeaderLabels(activeConfigKey, activeConfig).fail.split(" (")[0]}
+                              No. of samples above permissible limit {getExceedanceLimitStr(activeConfigKey, activeConfig)}
+                            </th>
+                            <th className="p-2 border font-black text-rose-600 text-center text-[10px] bg-rose-50/30">
+                              % of samples above permissible limit {getExceedanceLimitStr(activeConfigKey, activeConfig)}
                             </th>
                           </>
                         )}
@@ -3203,41 +3824,29 @@ export default function DetailedView({
                             return (
                               <React.Fragment key={period}>
                                 <td className="p-2 border text-center font-bold text-slate-500 bg-slate-50/10">{stats.total}</td>
-                                {activeParam === "SAR" ? (
+                                {activeConfigKey === "SAR" ? (
                                   <>
-                                    <td className="p-2 border text-center bg-emerald-50/10">
-                                      <div className="font-extrabold text-emerald-700">{stats.nSarS1 || 0}</div>
-                                      <div className="text-[9px] font-bold text-emerald-500/80">{(stats.nPctSarS1 || 0).toFixed(1)}%</div>
-                                    </td>
-                                    <td className="p-2 border text-center bg-amber-50/10">
-                                      <div className="font-extrabold text-amber-700">{stats.nSarS2 || 0}</div>
-                                      <div className="text-[9px] font-bold text-amber-500/80">{(stats.nPctSarS2 || 0).toFixed(1)}%</div>
-                                    </td>
-                                    <td className="p-2 border text-center bg-orange-50/10">
-                                      <div className="font-extrabold text-orange-700">{stats.nSarS3 || 0}</div>
-                                      <div className="text-[9px] font-bold text-orange-500/80">{(stats.nPctSarS3 || 0).toFixed(1)}%</div>
-                                    </td>
-                                    <td className="p-2 border text-center bg-rose-50/10">
-                                      <div className="font-extrabold text-rose-700">{stats.nSarS4 || 0}</div>
-                                      <div className="text-[9px] font-bold text-rose-500/80">{(stats.nPctSarS4 || 0).toFixed(1)}%</div>
-                                    </td>
+                                    <td className="p-2 border text-center bg-emerald-50/10 font-bold text-emerald-700">{stats.nSarS1 || 0}</td>
+                                    <td className="p-2 border text-center bg-emerald-50/10 text-emerald-600 font-medium">{(stats.nPctSarS1 || 0).toFixed(2)}%</td>
+                                    <td className="p-2 border text-center bg-amber-50/10 font-bold text-amber-700">{stats.nSarS2 || 0}</td>
+                                    <td className="p-2 border text-center bg-amber-50/10 text-amber-600 font-medium">{(stats.nPctSarS2 || 0).toFixed(2)}%</td>
+                                    <td className="p-2 border text-center bg-orange-50/10 font-bold text-orange-700">{stats.nSarS3 || 0}</td>
+                                    <td className="p-2 border text-center bg-orange-50/10 text-orange-600 font-medium">{(stats.nPctSarS3 || 0).toFixed(2)}%</td>
+                                    <td className="p-2 border text-center bg-rose-50/10 font-bold text-rose-700">{stats.nSarS4 || 0}</td>
+                                    <td className="p-2 border text-center bg-rose-50/10 text-rose-600 font-medium">{(stats.nPctSarS4 || 0).toFixed(2)}%</td>
                                   </>
                                 ) : (
                                   <>
-                                    <td className="p-2 border text-center bg-emerald-50/10">
-                                      <div className="font-extrabold text-emerald-700">{stats.nAcc}</div>
-                                      <div className="text-[9px] font-bold text-emerald-500/80">{stats.nPctAcc.toFixed(1)}%</div>
-                                    </td>
+                                    <td className="p-2 border text-center bg-emerald-50/10 font-bold text-emerald-700">{stats.nAcc}</td>
+                                    <td className="p-2 border text-center bg-emerald-50/10 text-emerald-600 font-medium">{stats.nPctAcc.toFixed(2)}%</td>
                                     {activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2 && (
-                                      <td className="p-2 border text-center bg-amber-50/10">
-                                        <div className="font-extrabold text-amber-700">{stats.nPerm}</div>
-                                        <div className="text-[9px] font-bold text-amber-500/80">{stats.nPctPerm.toFixed(1)}%</div>
-                                      </td>
+                                      <>
+                                        <td className="p-2 border text-center bg-amber-50/10 font-bold text-amber-700">{stats.nPerm}</td>
+                                        <td className="p-2 border text-center bg-amber-50/10 text-amber-600 font-medium">{stats.nPctPerm.toFixed(2)}%</td>
+                                      </>
                                     )}
-                                    <td className="p-2 border text-center bg-rose-50/10">
-                                      <div className="font-extrabold text-rose-700">{stats.nFail}</div>
-                                      <div className="text-[9px] font-bold text-rose-500/80">{stats.nPctFail.toFixed(1)}%</div>
-                                    </td>
+                                    <td className="p-2 border text-center bg-rose-50/10 font-bold text-rose-700">{stats.nFail}</td>
+                                    <td className="p-2 border text-center bg-rose-50/10 text-rose-600 font-medium">{stats.nPctFail.toFixed(2)}%</td>
                                   </>
                                 )}
                                 <td className="p-2 border text-center font-mono text-xs">{formatVal(stats.min)}</td>
@@ -3274,41 +3883,29 @@ export default function DetailedView({
                             return (
                               <React.Fragment key={period}>
                                 <td className="p-2 border border-slate-700 text-center font-extrabold text-slate-300">{stats.total}</td>
-                                {activeParam === "SAR" ? (
+                                {activeConfigKey === "SAR" ? (
                                   <>
-                                    <td className="p-2 border border-slate-700 text-center bg-[#064e3b]">
-                                      <div className="text-emerald-300 font-black text-sm">{stats.nSarS1 || 0}</div>
-                                      <div className="text-[9.5px] opacity-80">{(stats.nPctSarS1 || 0).toFixed(1)}%</div>
-                                    </td>
-                                    <td className="p-2 border border-slate-700 text-center bg-[#78350f]">
-                                      <div className="text-amber-300 font-black text-sm">{stats.nSarS2 || 0}</div>
-                                      <div className="text-[9.5px] opacity-80">{(stats.nPctSarS2 || 0).toFixed(1)}%</div>
-                                    </td>
-                                    <td className="p-2 border border-slate-700 text-center bg-[#c2410c]">
-                                      <div className="text-orange-300 font-black text-sm">{stats.nSarS3 || 0}</div>
-                                      <div className="text-[9.5px] opacity-80">{(stats.nPctSarS3 || 0).toFixed(1)}%</div>
-                                    </td>
-                                    <td className="p-2 border border-slate-700 text-center bg-[#881337]">
-                                      <div className="text-rose-300 font-black text-sm">{stats.nSarS4 || 0}</div>
-                                      <div className="text-[9.5px] opacity-80">{(stats.nPctSarS4 || 0).toFixed(1)}%</div>
-                                    </td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#064e3b] text-emerald-300 font-black">{stats.nSarS1 || 0}</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#064e3b] text-emerald-200">{(stats.nPctSarS1 || 0).toFixed(2)}%</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#78350f] text-amber-300 font-black">{stats.nSarS2 || 0}</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#78350f] text-amber-200">{(stats.nPctSarS2 || 0).toFixed(2)}%</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#c2410c] text-orange-300 font-black">{stats.nSarS3 || 0}</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#c2410c] text-orange-200">{(stats.nPctSarS3 || 0).toFixed(2)}%</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#881337] text-rose-300 font-black">{stats.nSarS4 || 0}</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#881337] text-rose-200">{(stats.nPctSarS4 || 0).toFixed(2)}%</td>
                                   </>
                                 ) : (
                                   <>
-                                    <td className="p-2 border border-slate-700 text-center bg-[#064e3b]">
-                                      <div className="text-emerald-300 font-black text-sm">{stats.nAcc}</div>
-                                      <div className="text-[9.5px] opacity-80">{stats.nPctAcc.toFixed(1)}%</div>
-                                    </td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#064e3b] text-emerald-300 font-black">{stats.nAcc}</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#064e3b] text-emerald-200">{stats.nPctAcc.toFixed(2)}%</td>
                                     {activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2 && (
-                                      <td className="p-2 border border-slate-700 text-center bg-[#78350f]">
-                                        <div className="text-amber-300 font-black text-sm">{stats.nPerm}</div>
-                                        <div className="text-[9.5px] opacity-80">{stats.nPctPerm.toFixed(1)}%</div>
-                                      </td>
+                                      <>
+                                        <td className="p-2 border border-slate-700 text-center bg-[#78350f] text-amber-300 font-black">{stats.nPerm}</td>
+                                        <td className="p-2 border border-slate-700 text-center bg-[#78350f] text-amber-200">{stats.nPctPerm.toFixed(2)}%</td>
+                                      </>
                                     )}
-                                    <td className="p-2 border border-slate-700 text-center bg-[#881337]">
-                                      <div className="text-rose-300 font-black text-sm">{stats.nFail}</div>
-                                      <div className="text-[9.5px] opacity-80">{stats.nPctFail.toFixed(1)}%</div>
-                                    </td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#881337] text-rose-300 font-black">{stats.nFail}</td>
+                                    <td className="p-2 border border-slate-700 text-center bg-[#881337] text-rose-200">{stats.nPctFail.toFixed(2)}%</td>
                                   </>
                                 )}
                                 <td className="p-2 border border-slate-700 text-center font-mono text-xs text-slate-300">{formatVal(stats.min)}</td>
@@ -3345,39 +3942,55 @@ export default function DetailedView({
                     {activeParam === "SAR" ? (
                       <>
                         <th className="p-4 font-black text-emerald-600 tracking-tighter text-center bg-emerald-50/50">
-                          ≤10 <br />
-                          <span className="text-[10px] opacity-70 font-semibold">(N/%)</span>
+                          ≤10 (No)
+                        </th>
+                        <th className="p-4 font-black text-emerald-600 tracking-tighter text-center bg-emerald-50/50">
+                          ≤10 (%)
                         </th>
                         <th className="p-4 font-black text-amber-600 tracking-tighter text-center bg-amber-50/50">
-                          &gt;10–18 <br />
-                          <span className="text-[10px] opacity-70 font-semibold">(N/%)</span>
+                          &gt;10–18 (No)
+                        </th>
+                        <th className="p-4 font-black text-amber-600 tracking-tighter text-center bg-amber-50/50">
+                          &gt;10–18 (%)
                         </th>
                         <th className="p-4 font-black text-orange-600 tracking-tighter text-center bg-orange-50/50">
-                          &gt;18–26 <br />
-                          <span className="text-[10px] opacity-70 font-semibold">(N/%)</span>
+                          &gt;18–26 (No)
+                        </th>
+                        <th className="p-4 font-black text-orange-600 tracking-tighter text-center bg-orange-50/50">
+                          &gt;18–26 (%)
                         </th>
                         <th className="p-4 font-black text-rose-600 tracking-tighter text-center bg-rose-50/50">
-                          &gt;26 <br />
-                          <span className="text-[10px] opacity-70 font-semibold">(N/%)</span>
+                          &gt;26 (No)
+                        </th>
+                        <th className="p-4 font-black text-rose-600 tracking-tighter text-center bg-rose-50/50">
+                          &gt;26 (%)
                         </th>
                       </>
                     ) : (
                       <>
                         <th className="p-4 font-black text-emerald-600 tracking-tighter text-center bg-emerald-50/50">
-                          {getTableHeaderLabels(activeConfigKey, activeConfig).acc} <br />
-                          <span className="text-[10px] opacity-70 font-semibold">(N/%)</span>
+                          {getTableHeaderLabels(activeConfigKey, activeConfig).acc.split(" (")[0]} (No)
+                        </th>
+                        <th className="p-4 font-black text-emerald-600 tracking-tighter text-center bg-emerald-50/50">
+                          {getTableHeaderLabels(activeConfigKey, activeConfig).acc.split(" (")[0]} (%)
                         </th>
                         
                         {activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2 && (
-                          <th className="p-4 font-black text-amber-600 tracking-tighter text-center bg-amber-50/50">
-                            {getTableHeaderLabels(activeConfigKey, activeConfig).perm} <br />
-                            <span className="text-[10px] opacity-70 font-semibold">(N/%)</span>
-                          </th>
+                          <>
+                            <th className="p-4 font-black text-amber-600 tracking-tighter text-center bg-amber-50/50">
+                              {getTableHeaderLabels(activeConfigKey, activeConfig).perm.split(" (")[0]} (No)
+                            </th>
+                            <th className="p-4 font-black text-amber-600 tracking-tighter text-center bg-amber-50/50">
+                              {getTableHeaderLabels(activeConfigKey, activeConfig).perm.split(" (")[0]} (%)
+                            </th>
+                          </>
                         )}
 
                         <th className="p-4 font-black text-rose-600 tracking-tighter text-center bg-rose-50/50">
-                          {getTableHeaderLabels(activeConfigKey, activeConfig).fail} <br />
-                          <span className="text-[10px] opacity-70 font-semibold">(N/%)</span>
+                          No. of samples above permissible limit {getExceedanceLimitStr(activeConfigKey, activeConfig)}
+                        </th>
+                        <th className="p-4 font-black text-rose-600 tracking-tighter text-center bg-rose-50/50">
+                          % of samples above permissible limit {getExceedanceLimitStr(activeConfigKey, activeConfig)}
                         </th>
                       </>
                     )}
@@ -3394,7 +4007,7 @@ export default function DetailedView({
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {tableRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7 + (activeParam === "SAR" ? 4 : (activeConfigKey === "pH" ? 2 : (activeConfig.b1 === activeConfig.b2 ? 2 : 3))) + (reportingLevel !== "State" ? 1 : 0) + (reportingLevel === "Block" ? 1 : 0)} className="p-12 text-center text-slate-400 font-bold uppercase tracking-wider">
+                      <td colSpan={7 + (activeParam === "SAR" ? 8 : (activeConfigKey === "pH" ? 4 : (activeConfig.b1 === activeConfig.b2 ? 4 : 6))) + (reportingLevel !== "State" ? 1 : 0) + (reportingLevel === "Block" ? 1 : 0)} className="p-12 text-center text-slate-400 font-bold uppercase tracking-wider">
                         No data uploaded yet. Please upload a spreadsheet to view parameter compliance details.
                       </td>
                     </tr>
@@ -3415,41 +4028,29 @@ export default function DetailedView({
                         
                         {activeParam === "SAR" ? (
                           <>
-                            <td className="p-4 text-center bg-emerald-50/20">
-                              <div className="font-extrabold text-emerald-700">{row.nSarS1 || 0}</div>
-                              <div className="text-[9px] font-bold text-emerald-500/80">{(row.nPctSarS1 || 0).toFixed(1)}%</div>
-                            </td>
-                            <td className="p-4 text-center bg-amber-50/20">
-                              <div className="font-extrabold text-amber-700">{row.nSarS2 || 0}</div>
-                              <div className="text-[9px] font-bold text-amber-500/80">{(row.nPctSarS2 || 0).toFixed(1)}%</div>
-                            </td>
-                            <td className="p-4 text-center bg-orange-50/20">
-                              <div className="font-extrabold text-orange-700">{row.nSarS3 || 0}</div>
-                              <div className="text-[9px] font-bold text-orange-500/80">{(row.nPctSarS3 || 0).toFixed(1)}%</div>
-                            </td>
-                            <td className="p-4 text-center bg-rose-50/20">
-                              <div className="font-extrabold text-rose-700">{row.nSarS4 || 0}</div>
-                              <div className="text-[9px] font-bold text-rose-500/80">{(row.nPctSarS4 || 0).toFixed(1)}%</div>
-                            </td>
+                            <td className="p-4 text-center bg-emerald-50/20 font-bold text-emerald-700">{row.nSarS1 || 0}</td>
+                            <td className="p-4 text-center bg-emerald-50/20 font-medium text-emerald-600">{(row.nPctSarS1 || 0).toFixed(2)}%</td>
+                            <td className="p-4 text-center bg-amber-50/20 font-bold text-amber-700">{row.nSarS2 || 0}</td>
+                            <td className="p-4 text-center bg-amber-50/20 font-medium text-amber-600">{(row.nPctSarS2 || 0).toFixed(2)}%</td>
+                            <td className="p-4 text-center bg-orange-50/20 font-bold text-orange-700">{row.nSarS3 || 0}</td>
+                            <td className="p-4 text-center bg-orange-50/20 font-medium text-orange-600">{(row.nPctSarS3 || 0).toFixed(2)}%</td>
+                            <td className="p-4 text-center bg-rose-50/20 font-bold text-rose-700">{row.nSarS4 || 0}</td>
+                            <td className="p-4 text-center bg-rose-50/20 font-medium text-rose-600">{(row.nPctSarS4 || 0).toFixed(2)}%</td>
                           </>
                         ) : (
                           <>
-                            <td className="p-4 text-center bg-emerald-50/20">
-                              <div className="font-extrabold text-emerald-700">{row.nAcc}</div>
-                              <div className="text-[9px] font-bold text-emerald-500/80">{row.nPctAcc.toFixed(1)}%</div>
-                            </td>
+                            <td className="p-4 text-center bg-emerald-50/20 font-bold text-emerald-700">{row.nAcc}</td>
+                            <td className="p-4 text-center bg-emerald-50/20 font-medium text-emerald-600">{row.nPctAcc.toFixed(2)}%</td>
 
                             {activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2 && (
-                              <td className="p-4 text-center bg-amber-50/20">
-                                <div className="font-extrabold text-amber-700">{row.nPerm}</div>
-                                <div className="text-[9px] font-bold text-amber-500/80">{row.nPctPerm.toFixed(1)}%</div>
-                              </td>
+                              <>
+                                <td className="p-4 text-center bg-amber-50/20 font-bold text-amber-700">{row.nPerm}</td>
+                                <td className="p-4 text-center bg-amber-50/20 font-medium text-amber-600">{row.nPctPerm.toFixed(2)}%</td>
+                              </>
                             )}
 
-                            <td className="p-4 text-center bg-rose-50/20">
-                              <div className="font-extrabold text-rose-700">{row.nFail}</div>
-                              <div className="text-[9px] font-bold text-rose-500/80">{row.nPctFail.toFixed(1)}%</div>
-                            </td>
+                            <td className="p-4 text-center bg-rose-50/20 font-bold text-rose-700">{row.nFail}</td>
+                            <td className="p-4 text-center bg-rose-50/20 font-medium text-rose-600">{row.nPctFail.toFixed(2)}%</td>
                           </>
                         )}
                         
@@ -3475,41 +4076,29 @@ export default function DetailedView({
                       
                       {activeParam === "SAR" ? (
                         <>
-                          <td className="p-1 text-center bg-[#064e3b]">
-                            <div className="text-emerald-300 font-black text-sm">{grandTotalRow.nSarS1 || 0}</div>
-                            <div className="text-[9.5px] opacity-80">{(grandTotalRow.nPctSarS1 || 0).toFixed(1)}%</div>
-                          </td>
-                          <td className="p-1 text-center bg-[#78350f]">
-                            <div className="text-amber-300 font-black text-sm">{grandTotalRow.nSarS2 || 0}</div>
-                            <div className="text-[9.5px] opacity-80">{(grandTotalRow.nPctSarS2 || 0).toFixed(1)}%</div>
-                          </td>
-                          <td className="p-1 text-center bg-[#c2410c]">
-                            <div className="text-orange-300 font-black text-sm">{grandTotalRow.nSarS3 || 0}</div>
-                            <div className="text-[9.5px] opacity-80">{(grandTotalRow.nPctSarS3 || 0).toFixed(1)}%</div>
-                          </td>
-                          <td className="p-1 text-center bg-[#881337]">
-                            <div className="text-rose-300 font-black text-sm">{grandTotalRow.nSarS4 || 0}</div>
-                            <div className="text-[9.5px] opacity-80">{(grandTotalRow.nPctSarS4 || 0).toFixed(1)}%</div>
-                          </td>
+                          <td className="p-4 text-center bg-[#064e3b] text-emerald-300 font-black">{grandTotalRow.nSarS1 || 0}</td>
+                          <td className="p-4 text-center bg-[#064e3b] text-emerald-200">{(grandTotalRow.nPctSarS1 || 0).toFixed(2)}%</td>
+                          <td className="p-4 text-center bg-[#78350f] text-amber-300 font-black">{grandTotalRow.nSarS2 || 0}</td>
+                          <td className="p-4 text-center bg-[#78350f] text-amber-200">{(grandTotalRow.nPctSarS2 || 0).toFixed(2)}%</td>
+                          <td className="p-4 text-center bg-[#c2410c] text-orange-300 font-black">{grandTotalRow.nSarS3 || 0}</td>
+                          <td className="p-4 text-center bg-[#c2410c] text-orange-200">{(grandTotalRow.nPctSarS3 || 0).toFixed(2)}%</td>
+                          <td className="p-4 text-center bg-[#881337] text-rose-300 font-black">{grandTotalRow.nSarS4 || 0}</td>
+                          <td className="p-4 text-center bg-[#881337] text-rose-200">{(grandTotalRow.nPctSarS4 || 0).toFixed(2)}%</td>
                         </>
                       ) : (
                         <>
-                          <td className="p-1 text-center bg-[#064e3b]">
-                            <div className="text-emerald-300 font-black text-sm">{grandTotalRow.nAcc}</div>
-                            <div className="text-[9.5px] opacity-80">{grandTotalRow.nPctAcc.toFixed(1)}%</div>
-                          </td>
+                          <td className="p-4 text-center bg-[#064e3b] text-emerald-300 font-black">{grandTotalRow.nAcc}</td>
+                          <td className="p-4 text-center bg-[#064e3b] text-emerald-200">{grandTotalRow.nPctAcc.toFixed(2)}%</td>
 
                           {activeConfigKey !== "pH" && activeConfig.b1 !== activeConfig.b2 && (
-                            <td className="p-1 text-center bg-[#78350f]">
-                              <div className="text-amber-300 font-black text-sm">{grandTotalRow.nPerm}</div>
-                              <div className="text-[9.5px] opacity-80">{grandTotalRow.nPctPerm.toFixed(1)}%</div>
-                            </td>
+                            <>
+                              <td className="p-4 text-center bg-[#78350f] text-amber-300 font-black">{grandTotalRow.nPerm}</td>
+                              <td className="p-4 text-center bg-[#78350f] text-amber-200">{grandTotalRow.nPctPerm.toFixed(2)}%</td>
+                            </>
                           )}
 
-                          <td className="p-1 text-center bg-[#881337]">
-                            <div className="text-rose-300 font-black text-sm">{grandTotalRow.nFail}</div>
-                            <div className="text-[9.5px] opacity-80">{grandTotalRow.nPctFail.toFixed(1)}%</div>
-                          </td>
+                          <td className="p-4 text-center bg-[#881337] text-rose-300 font-black">{grandTotalRow.nFail}</td>
+                          <td className="p-4 text-center bg-[#881337] text-rose-200">{grandTotalRow.nPctFail.toFixed(2)}%</td>
                         </>
                       )}
 

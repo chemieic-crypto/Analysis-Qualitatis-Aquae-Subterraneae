@@ -825,7 +825,7 @@ export default function RankingStatsView({
                             <td className="py-3.5 px-4 text-center text-rose-600 font-black text-[13px] bg-rose-50/20">{d.fail}</td>
                             <td className="py-3.5 px-4 text-center">
                               <span className="inline-flex items-center px-4 py-1.5 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200 shadow-xs">
-                                {((d.fail / d.total) * 100).toFixed(1)}%
+                                {((d.fail / d.total) * 100).toFixed(2)}%
                               </span>
                             </td>
                           </tr>
@@ -886,7 +886,7 @@ export default function RankingStatsView({
                             <td className="py-3.5 px-4 text-center text-rose-600 font-black text-[13px] bg-rose-50/20">{d.fail}</td>
                             <td className="py-3.5 px-4 text-center">
                               <span className="inline-flex items-center px-4 py-1.5 rounded-full text-xs font-black bg-amber-50 text-amber-800 border border-amber-200 shadow-xs">
-                                {((d.fail / d.total) * 100).toFixed(1)}%
+                                {((d.fail / d.total) * 100).toFixed(2)}%
                               </span>
                             </td>
                           </tr>
@@ -949,7 +949,7 @@ export default function RankingStatsView({
                             <td className="py-3.5 px-4 text-center text-rose-600 font-black text-[13px] bg-rose-50/20">{d.fail}</td>
                             <td className="py-3.5 px-4 text-center">
                               <span className="inline-flex items-center px-4 py-1.5 rounded-full text-xs font-black bg-purple-50 text-purple-700 border border-purple-200 shadow-xs">
-                                {((d.fail / d.total) * 100).toFixed(1)}%
+                                {((d.fail / d.total) * 100).toFixed(2)}%
                               </span>
                             </td>
                           </tr>

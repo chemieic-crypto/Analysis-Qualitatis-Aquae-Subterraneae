@@ -621,8 +621,8 @@ export default function MasterSummaryView({
 
       {/* Full Screen Table Modal View */}
       {isFullscreen && (
-        <div className="fixed inset-0 z-[9999] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 md:p-8">
-          <div className="bg-white rounded-3xl shadow-2xl p-6 w-full h-[92vh] flex flex-col relative">
+        <div className="fixed inset-0 z-[9999] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-8">
+          <div className="bg-white rounded-3xl shadow-2xl p-3 sm:p-6 w-full h-[95vh] sm:h-[92vh] flex flex-col relative">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div>
                 <h3 className="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">

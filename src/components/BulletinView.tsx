@@ -259,11 +259,11 @@ export default function BulletinView({
           return;
         }
 
-        const scaleFactor = 3.0; // High-resolution 3x supersampling for crystal clear, crisp vector maps
+        const scaleFactor = 4.0; // High-resolution 4x supersampling for crystal clear 300+ DPI vector maps
         const targetW = w * scaleFactor;
         const targetH = h * scaleFactor;
 
-        // Force browser's SVG engine to rasterize at 3x resolution by replacing root attributes
+        // Force browser's SVG engine to rasterize at 4x resolution by replacing root attributes
         let processedSvg = svgString;
         processedSvg = processedSvg.replace(/width="600"/, `width="${targetW}"`);
         processedSvg = processedSvg.replace(/height="800"/, `height="${targetH}"`);
@@ -293,16 +293,18 @@ export default function BulletinView({
         image.onload = () => {
           clearTimeout(timeoutId);
           try {
-            const scaleFactor = 3.0; // High-resolution 3x supersampling for crystal clear, crisp vector maps
+            const scaleFactor = 4.0; // High-resolution 4x supersampling for crystal clear 300+ DPI vector maps
             const canvas = document.createElement("canvas");
             canvas.width = w * scaleFactor;
             canvas.height = h * scaleFactor;
             const ctx = canvas.getContext("2d");
             if (ctx) {
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = "high";
               ctx.fillStyle = "#ffffff";
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-              complete(canvas.toDataURL("image/png", 0.9));
+              complete(canvas.toDataURL("image/png", 1.0));
               return;
             }
           } catch (canvasErr) {
@@ -788,6 +790,8 @@ export default function BulletinView({
       const ctx = canvas.getContext("2d");
 
       if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
         // Soft glossy subtle background gradient
         const bgGrad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
         bgGrad.addColorStop(0, "#ffffff");
@@ -1203,6 +1207,8 @@ export default function BulletinView({
         const ctx = canvas.getContext("2d");
 
         if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
           // Draw light background if there's no shapefile
           if (!shapefileGeoJson) {
             ctx.fillStyle = "#f8fafc";
@@ -4210,6 +4216,9 @@ export default function BulletinView({
       const rasterizedMaps: Record<string, string> = {};
       const rasterizedDonuts: Record<string, string> = {};
       const rasterizedExceedanceCharts: Record<string, string> = {};
+      const rasterizedOgives: Record<string, string> = {};
+      const rasterizedFrequencyCharts: Record<string, string> = {};
+      const rasterizedExceedanceBarCharts: Record<string, string> = {};
 
       const seenPrecompileKeys = new Set<string>();
       let index = 0;
@@ -4310,6 +4319,471 @@ export default function BulletinView({
             }
           } catch (err) {
             console.error(`Failed to precompile donut chart for ${configKey}:`, err);
+          }
+        }
+
+        // 2b. Precompile Ogive Cumulative Frequency Curves
+        const ogiveVals: number[] = [];
+        mainReportData.forEach((row) => {
+          const v = parseFloat(row[paramName]);
+          if (!isNaN(v)) {
+            ogiveVals.push(v);
+          }
+        });
+
+        if (ogiveVals.length > 0) {
+          ogiveVals.sort((a, b) => a - b);
+          const p50 = getPercentile(ogiveVals, 50);
+          const p90 = getPercentile(ogiveVals, 90);
+          const p95 = getPercentile(ogiveVals, 95);
+
+          const minVal = ogiveVals[0];
+          const maxVal = ogiveVals[ogiveVals.length - 1];
+
+          const steps = 15;
+          const dataPoints: { x: number; y: number }[] = [];
+
+          if (minVal === maxVal) {
+            dataPoints.push({ x: minVal - 1, y: 0 });
+            dataPoints.push({ x: minVal, y: 100 });
+            dataPoints.push({ x: minVal + 1, y: 100 });
+          } else {
+            const interval = (maxVal - minVal) / (steps - 1);
+            const padding = interval * 0.5;
+            dataPoints.push({ x: Math.max(0, minVal - padding), y: 0 });
+
+            for (let s = 0; s < steps; s++) {
+              const threshold = minVal + s * interval;
+              const count = ogiveVals.filter((v) => v <= threshold).length;
+              const percentage = (count / ogiveVals.length) * 100;
+              dataPoints.push({ x: Number(threshold.toFixed(3)), y: Number(percentage.toFixed(1)) });
+            }
+          }
+
+          const ogiveTitleText = `Cumulative Frequency (Ogive) Curve - ${config.name}`;
+          const ogiveOptions: Highcharts.Options = {
+            chart: {
+              type: "spline",
+              backgroundColor: "#ffffff",
+            },
+            title: {
+              text: ogiveTitleText,
+              style: { fontWeight: "bold", color: "#1e3a8a", fontSize: "24px", fontFamily: "'Times New Roman', Times, serif" }
+            },
+            xAxis: {
+              title: {
+                text: `${config.name}${config.unit ? ` (${config.unit})` : ""}`,
+                style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "24px", fontWeight: "bold", color: "#1e293b" }
+              },
+              labels: {
+                style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "22px", color: "#334155" }
+              },
+              gridLineWidth: 1,
+              gridLineDashStyle: "Dash",
+              gridLineColor: "rgba(0,0,0,0.05)",
+              plotLines: [
+                {
+                  color: "#2563eb",
+                  dashStyle: "Dash",
+                  width: 3.0,
+                  value: p50,
+                  zIndex: 4,
+                  label: {
+                    text: `Median (P50) = ${p50.toFixed(2)}`,
+                    verticalAlign: "top",
+                    align: "left",
+                    rotation: 0,
+                    y: 30,
+                    x: 10,
+                    style: { color: "#2563eb", fontWeight: "bold", fontSize: "22px", fontFamily: "'Times New Roman', Times, serif" }
+                  }
+                },
+                {
+                  color: "#f97316",
+                  dashStyle: "Dash",
+                  width: 3.0,
+                  value: p90,
+                  zIndex: 4,
+                  label: {
+                    text: `P90 = ${p90.toFixed(2)}`,
+                    verticalAlign: "top",
+                    align: "right",
+                    rotation: 0,
+                    y: 80,
+                    x: -10,
+                    style: { color: "#f97316", fontWeight: "bold", fontSize: "22px", fontFamily: "'Times New Roman', Times, serif" }
+                  }
+                },
+                {
+                  color: "#dc2626",
+                  dashStyle: "Dash",
+                  width: 3.0,
+                  value: p95,
+                  zIndex: 4,
+                  label: {
+                    text: `P95 = ${p95.toFixed(2)}`,
+                    verticalAlign: "top",
+                    align: "left",
+                    rotation: 0,
+                    y: 130,
+                    x: 10,
+                    style: { color: "#dc2626", fontWeight: "bold", fontSize: "22px", fontFamily: "'Times New Roman', Times, serif" }
+                  }
+                }
+              ]
+            },
+            yAxis: {
+              title: {
+                text: "Cumulative Percentage (%)",
+                style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "24px", fontWeight: "bold", color: "#1e293b" }
+              },
+              labels: {
+                style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "22px", color: "#334155" }
+              },
+              min: 0,
+              max: 100,
+              tickInterval: 10,
+              gridLineWidth: 1,
+              gridLineColor: "rgba(0,0,0,0.05)"
+            },
+            plotOptions: {
+              spline: {
+                marker: { enabled: true, radius: 4 }
+              }
+            },
+            series: [
+              {
+                name: "Cumulative %",
+                type: "spline",
+                data: dataPoints.map((pt) => [pt.x, pt.y]),
+                color: "#4f46e5",
+                lineWidth: 3.5,
+                showInLegend: false
+              }
+            ],
+            credits: { enabled: false }
+          };
+
+          try {
+            const ogiveBase64 = await generateOfflineChartBase64(ogiveOptions, 1100, 580);
+            if (ogiveBase64) {
+              rasterizedOgives[configKey] = ogiveBase64;
+            }
+          } catch (err) {
+            console.error(`Failed to precompile ogive chart for ${configKey}:`, err);
+          }
+        }
+
+        // 2c. Precompile Parameter-wise Frequency Distribution Charts
+        const freqVals: number[] = [];
+        mainReportData.forEach((row) => {
+          const v = parseFloat(row[paramName]);
+          if (!isNaN(v)) {
+            freqVals.push(v);
+          }
+        });
+
+        if (freqVals.length > 0) {
+          const formatVal = (val: number) => {
+            if (val === 0) return "0";
+            if (val >= 100) return Math.round(val).toString();
+            if (val >= 10) return val.toFixed(1);
+            if (val >= 0.1) return val.toFixed(2);
+            return val.toFixed(3);
+          };
+
+          const classes: { label: string; count: number; color: string; min: number; max: number }[] = [];
+          const totalCount = freqVals.length;
+
+          if (configKey === "pH") {
+            const phClasses = [
+              { label: "< 6.5", min: 0, max: 6.5, color: "#ef4444" },
+              { label: "6.5 – 7.0", min: 6.5, max: 7.0, color: "#15803d" },
+              { label: "7.0 – 7.5", min: 7.0, max: 7.5, color: "#22c55e" },
+              { label: "7.5 – 8.0", min: 7.5, max: 8.0, color: "#84cc16" },
+              { label: "8.0 – 8.5", min: 8.0, max: 8.5, color: "#eab308" },
+              { label: "8.5 – 9.0", min: 8.5, max: 9.0, color: "#f97316" },
+              { label: "9.0 – 9.5", min: 9.0, max: 9.5, color: "#ea580c" },
+              { label: "> 9.5", min: 9.5, max: 999, color: "#b91c1c" },
+            ];
+            phClasses.forEach((cls) => {
+              const count = freqVals.filter(v => {
+                if (cls.label.startsWith("<")) return v < cls.max;
+                if (cls.label.startsWith(">")) return v >= cls.min;
+                return v >= cls.min && v < cls.max;
+              }).length;
+              classes.push({ ...cls, count });
+            });
+          } else {
+            let L = config.b2 || config.b1;
+            if (!L || isNaN(L) || L <= 0) {
+              L = 100;
+            }
+            const w = L / 4;
+            const customColors = [
+              "#15803d", // Class 1
+              "#22c55e", // Class 2
+              "#84cc16", // Class 3
+              "#eab308", // Class 4
+              "#f97316", // Class 5
+              "#ea580c", // Class 6
+              "#ef4444", // Class 7
+              "#b91c1c", // Class 8
+            ];
+            for (let c = 0; c < 8; c++) {
+              let label = "";
+              let min = 0;
+              let max = Infinity;
+              if (c < 4) {
+                min = c * w;
+                max = (c + 1) * w;
+                label = `${formatVal(min)} – ${formatVal(max)}`;
+              } else if (c < 7) {
+                min = c * w;
+                max = (c + 1) * w;
+                label = `${formatVal(min)} – ${formatVal(max)}`;
+              } else {
+                min = 7 * w;
+                max = Infinity;
+                label = `> ${formatVal(min)}`;
+              }
+              const count = freqVals.filter(v => {
+                if (max === Infinity) return v >= min;
+                return v >= min && v < max;
+              }).length;
+              classes.push({
+                label,
+                count,
+                color: customColors[c],
+                min,
+                max
+              });
+            }
+          }
+
+          const freqTitleText = `Frequency Distribution of ${config.name} (${formatChemicalFormula(configKey)})`;
+          const freqOptions: Highcharts.Options = {
+            chart: {
+              type: "column",
+              backgroundColor: "#ffffff",
+            },
+            title: {
+              text: freqTitleText,
+              style: { fontWeight: "bold", color: "#1e3a8a", fontSize: "24px", fontFamily: "'Times New Roman', Times, serif" }
+            },
+            xAxis: {
+              categories: classes.map(c => c.label),
+              title: {
+                text: `Concentration Range Classes ${configKey === "pH" ? "" : `(${config.unit || "mg/L"})`}`,
+                style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "24px", fontWeight: "bold", color: "#1e293b" }
+              },
+              labels: {
+                style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "20px", fontWeight: "bold", color: "#334155" }
+              },
+              gridLineWidth: 0
+            },
+            yAxis: {
+              title: {
+                text: "Percentage of Stations (%)",
+                style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "24px", fontWeight: "bold", color: "#1e293b" }
+              },
+              labels: {
+                style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "22px", color: "#334155" }
+              },
+              min: 0,
+              max: 100,
+              tickInterval: 10,
+              gridLineWidth: 1,
+              gridLineColor: "rgba(0,0,0,0.05)"
+            },
+            plotOptions: {
+              column: {
+                colorByPoint: true,
+                colors: classes.map(c => c.color),
+                dataLabels: {
+                  enabled: true,
+                  crop: false,
+                  overflow: "allow",
+                  formatter: function(this: any): string {
+                    const count = this.point.options.count;
+                    return `${this.y.toFixed(1)}%<br>(n=${count})`;
+                  },
+                  style: {
+                    fontFamily: "'Times New Roman', Times, serif",
+                    fontSize: "20px",
+                    fontWeight: "bold",
+                    color: "#1e293b"
+                  }
+                }
+              }
+            },
+            series: [
+              {
+                name: "Percentage of Stations",
+                type: "column",
+                data: classes.map((cls) => {
+                  const pct = totalCount > 0 ? (cls.count / totalCount) * 100 : 0;
+                  return {
+                    y: Number(pct.toFixed(1)),
+                    count: cls.count,
+                    color: cls.color
+                  };
+                }),
+                showInLegend: false
+              }
+            ],
+            credits: { enabled: false }
+          };
+
+          try {
+            const freqBase64 = await generateOfflineChartBase64(freqOptions, 1100, 580);
+            if (freqBase64) {
+              rasterizedFrequencyCharts[configKey] = freqBase64;
+            }
+          } catch (err) {
+            console.error(`Failed to precompile frequency chart for ${configKey}:`, err);
+          }
+        }
+
+        // 2d. Precompile Bar Chart for partially affected States/UTs or Districts in decreasing order of exceedance
+        const mappedHeader = Object.keys(headerMap).find((k) => headerMap[k] === configKey) || paramName;
+        const barGroupKey = breakdownLevel === "State" ? headers.state : headers.district;
+        if (barGroupKey) {
+          const barGroupedData: Record<string, { total: number; exceed: number }> = {};
+          
+          mainReportData.forEach((row) => {
+            const locName = String(row[barGroupKey] || "Unknown").trim();
+            if (locName === "Unknown" || !locName) return;
+
+            if (!barGroupedData[locName]) {
+              barGroupedData[locName] = { total: 0, exceed: 0 };
+            }
+
+            const val = parseFloat(row[mappedHeader]);
+            if (!isNaN(val)) {
+              barGroupedData[locName].total++;
+              let isExceed = false;
+              if (configKey === "pH") {
+                if (val < config.b1 || val > config.b2) isExceed = true;
+              } else {
+                const limit = config.b1 === config.b2 ? config.b1 : config.b2;
+                if (val > limit) isExceed = true;
+              }
+
+              if (isExceed) {
+                barGroupedData[locName].exceed++;
+              }
+            }
+          });
+
+          // Filter for partially affected (exceed > 0)
+          const partiallyAffected = Object.entries(barGroupedData)
+            .filter(([_, stats]) => stats.exceed > 0)
+            .map(([locName, stats]) => {
+              const pct = (stats.exceed / stats.total) * 100;
+              return {
+                name: locName,
+                y: Number(pct.toFixed(2)),
+                exceed: stats.exceed,
+                total: stats.total
+              };
+            });
+
+          // Sort in decreasing order of exceedance %
+          partiallyAffected.sort((a, b) => b.y - a.y);
+
+          // Limit to top 25 to ensure the report compiles quickly and the chart is highly readable
+          const slicedPartiallyAffected = partiallyAffected.slice(0, 25);
+
+          if (slicedPartiallyAffected.length > 0) {
+            const categories = slicedPartiallyAffected.map(item => item.name);
+            const seriesData = slicedPartiallyAffected.map(item => ({
+              name: item.name,
+              y: item.y,
+              count: item.exceed,
+              total: item.total
+            }));
+
+            const barTitleText = `Exceedance Rate of ${config.name} (${configKey}) by ${breakdownLevel === "State" ? "State/UT" : "District"}${partiallyAffected.length > 25 ? " (Top 25)" : ""}`;
+            const barOptions: Highcharts.Options = {
+              chart: {
+                type: "bar",
+                backgroundColor: "#ffffff",
+              },
+              title: {
+                text: barTitleText,
+                style: { fontWeight: "bold", color: "#1e3a8a", fontSize: "24px", fontFamily: "'Times New Roman', Times, serif" }
+              },
+              xAxis: {
+                categories: categories,
+                title: {
+                  text: breakdownLevel === "State" ? "State/UT" : "District",
+                  style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "22px", fontWeight: "bold", color: "#1e293b" }
+                },
+                labels: {
+                  style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "18px", fontWeight: "bold", color: "#334155" }
+                },
+                gridLineWidth: 0
+              },
+              yAxis: {
+                title: {
+                  text: "Exceedance Percentage (%)",
+                  style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "22px", fontWeight: "bold", color: "#1e293b" }
+                },
+                labels: {
+                  style: { fontFamily: "'Times New Roman', Times, serif", fontSize: "18px", color: "#334155" }
+                },
+                min: 0,
+                max: 100,
+                tickInterval: 10,
+                gridLineWidth: 1,
+                gridLineColor: "rgba(0,0,0,0.05)"
+              },
+              plotOptions: {
+                bar: {
+                  colorByPoint: false,
+                  dataLabels: {
+                    enabled: true,
+                    crop: false,
+                    overflow: "allow",
+                    formatter: function(this: any): string {
+                      const yVal = typeof this.y === "number" ? this.y : 0;
+                      const count = this.point && this.point.options && typeof this.point.options.count === "number" ? this.point.options.count : 0;
+                      const tot = this.point && this.point.options && typeof this.point.options.total === "number" ? this.point.options.total : 0;
+                      return `${yVal.toFixed(1)}% (${count}/${tot})`;
+                    },
+                    style: {
+                      fontFamily: "'Times New Roman', Times, serif",
+                      fontSize: "18px",
+                      fontWeight: "bold",
+                      color: "#1e293b"
+                    }
+                  }
+                }
+              },
+              series: [
+                {
+                  name: "Exceedance %",
+                  type: "bar",
+                  data: seriesData,
+                  color: "#dc2626", // Crimson/red color for exceedance
+                  showInLegend: false
+                }
+              ],
+              credits: { enabled: false }
+            };
+
+            // Calculate height dynamically based on the number of categories to avoid squishing
+            const dynamicHeight = Math.max(450, categories.length * 40 + 150);
+
+            try {
+              const barBase64 = await generateOfflineChartBase64(barOptions, 1100, dynamicHeight);
+              if (barBase64) {
+                rasterizedExceedanceBarCharts[configKey] = barBase64;
+              }
+            } catch (err) {
+              console.error(`Failed to precompile bar chart for ${configKey}:`, err);
+            }
           }
         }
 
@@ -4467,9 +4941,9 @@ Although natural geological sources account for the majority of arsenic contamin
         const donutChartTitle = `Distribution of ${config.name} in Monitored Ranges`;
         const donutBase64 = bulletinMaps[`donut_${configKey}`] || bulletinMaps[`donut_${paramName}`] || rasterizedDonuts[configKey] || "";
 
-        const pctAcc = validCount > 0 ? ((nAcc / validCount) * 100).toFixed(1) : "0.0";
-        const pctPerm = validCount > 0 ? ((nPerm / validCount) * 100).toFixed(1) : "0.0";
-        const pctFail = validCount > 0 ? ((nFail / validCount) * 100).toFixed(1) : "0.0";
+        const pctAcc = validCount > 0 ? ((nAcc / validCount) * 100).toFixed(2) : "0.00";
+        const pctPerm = validCount > 0 ? ((nPerm / validCount) * 100).toFixed(2) : "0.00";
+        const pctFail = validCount > 0 ? ((nFail / validCount) * 100).toFixed(2) : "0.00";
 
         const tableANum = tblIndex;
         const tableBNum = tblIndex + 1;
@@ -4560,6 +5034,96 @@ Although natural geological sources account for the majority of arsenic contamin
           tblIndex += 2;
         }
 
+        const allVals: number[] = [];
+        mainReportData.forEach((row) => {
+          const v = parseFloat(row[paramName]);
+          if (!isNaN(v)) {
+            allVals.push(v);
+          }
+        });
+
+        let ogiveBase64 = "";
+        if (bulletinMaps) {
+          const matchingKey = Object.keys(bulletinMaps).find((k) => {
+            return k.startsWith(`sent_chart_ogive_${configKey}_`) || k.startsWith(`sent_chart_ogive_${paramName}_`);
+          });
+          if (matchingKey) {
+            ogiveBase64 = bulletinMaps[matchingKey];
+          }
+        }
+        if (!ogiveBase64) {
+          ogiveBase64 = rasterizedOgives[configKey] || "";
+        }
+
+        let donutHTML = "";
+        if (donutBase64) {
+          donutHTML = `
+            <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
+              <img src="${donutBase64}" width="390" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="${donutChartTitle}" />
+              <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: ${donutChartTitle}</p>
+            </div>
+          `;
+        }
+
+        let mapHTML = "";
+        if (mapImageBase64) {
+          mapHTML = `
+            <p style="text-align: justify; line-height: 1.6; margin-top: 15px; margin-bottom: 15px;">
+              Spatial GIS Map showing ${config.name} (${formatChemicalFormula(configKey)}) distribution is given in figure ${figIndex}.
+            </p>
+            <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
+              <img src="${mapImageBase64}" width="650" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="GIS Spatial Map of ${config.name}" />
+              <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: Spatial GIS Map showing ${config.name} (${formatChemicalFormula(configKey)}) distribution</p>
+            </div>
+          `;
+        }
+
+        let ogiveHTML = "";
+        if (ogiveBase64 && allVals.length > 0) {
+          const medianVal = getPercentile(allVals, 50);
+          const p90Val = getPercentile(allVals, 90);
+          const p95Val = getPercentile(allVals, 95);
+          const unitLabel = config.unit ? ` ${config.unit}` : "";
+
+          ogiveHTML = `
+            <p style="text-align: justify; line-height: 1.6; margin-top: 15px; margin-bottom: 15px;">
+              The cumulative probability distribution of ${config.name} is represented by the <strong>Cumulative Frequency (Ogive) Curve</strong> shown in Figure ${figIndex}. An Ogive curve is a non-parametric statistical tool that illustrates the percentage of monitoring locations that fall below any given concentration value.
+            </p>
+            <p style="text-align: justify; line-height: 1.6; margin-bottom: 15px;">
+              For this dataset, the <strong>Median (50th Percentile)</strong> concentration of ${config.name} is <strong>${medianVal.toFixed(2)}${unitLabel}</strong>, indicating that 50% of the monitored sites register concentrations below this value. The <strong>90th Percentile (P90)</strong> concentration is <strong>${p90Val.toFixed(2)}${unitLabel}</strong>, and the <strong>95th Percentile (P95)</strong> is observed at <strong>${p95Val.toFixed(2)}${unitLabel}</strong>, representing the upper bound of the concentration distribution for the vast majority (95%) of the sampling stations. High-slope gradients on the Ogive curve suggest a highly uniform distribution of concentrations within the aquifer, whereas a prolonged, low-slope horizontal trailing tail highlights localized extreme anomalies or contamination hotspots.
+            </p>
+            <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
+              <img src="${ogiveBase64}" width="750" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="Ogive Cumulative Frequency Curve of ${config.name}" />
+              <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: Cumulative Frequency (Ogive) Curve of ${config.name} (${formatChemicalFormula(configKey)}) across monitored stations</p>
+            </div>
+          `;
+        }
+
+        let frequencyHTML = "";
+        const freqBase64 = rasterizedFrequencyCharts[configKey] || "";
+        if (freqBase64 && allVals.length > 0) {
+          frequencyHTML = `
+            <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
+              <img src="${freqBase64}" width="750" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="Frequency Distribution Diagram of ${config.name}" />
+              <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: Parameter-wise Frequency Distribution Diagram of ${config.name} (${formatChemicalFormula(configKey)}) across monitored stations</p>
+            </div>
+          `;
+        }
+
+        let exceedanceBarChartHTML = "";
+        const barChartBase64 = rasterizedExceedanceBarCharts[configKey] || "";
+        if (barChartBase64) {
+          exceedanceBarChartHTML = `
+            <p style="text-align: justify; line-height: 1.6; margin-top: 15px; margin-bottom: 15px;">
+              To visually compare the intensity of contamination across different regions, the <strong>Exceedance Percentage Bar Chart</strong> is compiled in Figure ${figIndex}. This chart illustrates the percentage of groundwater sampling locations exceeding the BIS guidelines for ${config.name} (${formatChemicalFormula(configKey)}) within each partially affected ${breakdownLevel === "State" ? "State/UT" : "District"} in descending order of severity.
+            </p>
+            <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
+              <img src="${barChartBase64}" width="750" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="Exceedance rate of ${config.name} by ${breakdownLevel}" />
+              <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: Exceedance Rate of ${config.name} (${formatChemicalFormula(configKey)}) across partially affected ${breakdownLevel === "State" ? "States/UTs" : "Districts"}</p>
+            </div>
+          `;
+        }
+
         parameterSectionsHTML += `
           <div style="margin-bottom: 40px; page-break-inside: auto;">
             <h4 style="font-size: 13pt; font-weight: bold; margin-top: 25px; color: #1e3a8a; border-bottom: 1.5px solid #94a3b8; padding-bottom: 4px;">4.${subSecIndex++} ${config.name} (${formatChemicalFormula(configKey)})</h4>
@@ -4568,37 +5132,23 @@ Although natural geological sources account for the majority of arsenic contamin
             </div>
             ${textSummaryRange}
             
-            ${
-              donutBase64
-                ? `
-              <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
-                <img src="${donutBase64}" width="780" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="${donutChartTitle}" />
-                <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: ${donutChartTitle}</p>
-              </div>
-              `
-                : ""
-            }
+            ${donutHTML}
 
             ${classificationCaption}
             ${tableInfo.html}
+
+            ${exceedanceBarChartHTML}
+
             ${tableBReference}
             ${detailedTableHTML}
 
             ${categorizationParagraph}
 
-            ${
-              mapImageBase64
-                ? `
-              <p style="text-align: justify; line-height: 1.6; margin-top: 15px; margin-bottom: 15px;">
-                Spatial GIS Map showing ${config.name} (${formatChemicalFormula(configKey)}) distribution is given in figure ${figIndex}.
-              </p>
-              <div style="text-align: center; margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
-                <img src="${mapImageBase64}" width="650" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="GIS Spatial Map of ${config.name}" />
-                <p style="text-align: center; font-weight: bold; font-size: 10.5pt; margin-top: 8px;">Figure ${figIndex++}: Spatial GIS Map showing ${config.name} (${formatChemicalFormula(configKey)}) distribution</p>
-              </div>
-              `
-                : ""
-            }
+            ${mapHTML}
+
+            ${ogiveHTML}
+
+            ${frequencyHTML}
 
             ${monsoonImpact.html}
             
@@ -5785,10 +6335,10 @@ Although natural geological sources account for the majority of arsenic contamin
           </p>
 
           <div style="text-align: center; margin: 25px 0; page-break-inside: avoid;">
-            <div style="display: inline-block; padding: 15px; border: none; background: transparent; box-shadow: none; width: 100%; max-width: 660px;">
+            <div style="display: inline-block; padding: 15px; border: none; background: transparent; box-shadow: none; width: 100%; max-width: 330px;">
               ${
                 sarDonutBase64
-                  ? `<img src="${sarDonutBase64}" width="660" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="SAR Distribution Chart" />`
+                  ? `<img src="${sarDonutBase64}" width="330" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="SAR Distribution Chart" />`
                   : drawSarDistributionChart()
               }
             </div>
@@ -5840,10 +6390,10 @@ Although natural geological sources account for the majority of arsenic contamin
           </p>
 
           <div style="text-align: center; margin: 25px 0; page-break-inside: avoid;">
-            <div style="display: inline-block; padding: 15px; border: none; background: transparent; box-shadow: none; width: 100%; max-width: 660px;">
+            <div style="display: inline-block; padding: 15px; border: none; background: transparent; box-shadow: none; width: 100%; max-width: 330px;">
               ${
                 rscDonutBase64
-                  ? `<img src="${rscDonutBase64}" width="660" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="RSC Distribution Chart" />`
+                  ? `<img src="${rscDonutBase64}" width="330" style="max-width: 100%; height: auto; border: none; display: block; margin: 0 auto; background: transparent;" alt="RSC Distribution Chart" />`
                   : drawRscDistributionChart()
               }
             </div>
@@ -6835,7 +7385,7 @@ Although natural geological sources account for the majority of arsenic contamin
               const stats = g.paramStats[configKey];
               const above = stats.above;
               const totalForParam = stats.analysed;
-              const pctText = totalForParam > 0 ? `${((above / totalForParam) * 100).toFixed(1)}%` : "N/A";
+              const pctText = totalForParam > 0 ? `${((above / totalForParam) * 100).toFixed(2)}%` : "N/A";
               
               const valColor = above > 0 ? "color: #b91c1c; font-weight: bold;" : "color: #1e293b;";
               const pctColor = above > 0 ? "color: #b91c1c; font-weight: bold;" : "color: #475569;";
@@ -6869,7 +7419,7 @@ Although natural geological sources account for the majority of arsenic contamin
             const stats = grandParamStats[configKey];
             const above = stats.above;
             const totalForParam = stats.analysed;
-            const pctText = totalForParam > 0 ? `${((above / totalForParam) * 100).toFixed(1)}%` : "N/A";
+            const pctText = totalForParam > 0 ? `${((above / totalForParam) * 100).toFixed(2)}%` : "N/A";
 
             const valColor = above > 0 ? "color: #b91c1c; font-weight: bold;" : "color: #1e293b;";
             const pctColor = above > 0 ? "color: #b91c1c; font-weight: bold;" : "color: #475569;";

@@ -277,9 +277,9 @@ export function CombinationAnalysisView({
     const multi = currentFilteredData.filter(r => r.failCount > 1).length;
 
     const donut = [
-      { name: "Uncontaminated (Compliant)", value: clean, percentage: total > 0 ? ((clean / total) * 100).toFixed(1) : "0" },
-      { name: "Single Parameter Exceedance", value: single, percentage: total > 0 ? ((single / total) * 100).toFixed(1) : "0" },
-      { name: "Multiple Parameters Exceedance", value: multi, percentage: total > 0 ? ((multi / total) * 100).toFixed(1) : "0" }
+      { name: "Uncontaminated (Compliant)", value: clean, percentage: total > 0 ? ((clean / total) * 100).toFixed(2) : "0.00" },
+      { name: "Single Parameter Exceedance", value: single, percentage: total > 0 ? ((single / total) * 100).toFixed(2) : "0.00" },
+      { name: "Multiple Parameters Exceedance", value: multi, percentage: total > 0 ? ((multi / total) * 100).toFixed(2) : "0.00" }
     ];
 
     return { donut };
@@ -297,7 +297,7 @@ export function CombinationAnalysisView({
       .map(([key, count]) => ({
         key,
         count,
-        percentage: currentFilteredData.length > 0 ? ((count / currentFilteredData.length) * 100).toFixed(1) : "0"
+        percentage: currentFilteredData.length > 0 ? ((count / currentFilteredData.length) * 100).toFixed(2) : "0.00"
       }))
       .sort((a, b) => b.count - a.count);
   }, [currentFilteredData]);
@@ -944,7 +944,7 @@ export function CombinationAnalysisView({
                 </div>
 
                 {/* Top 50 Well log table */}
-                <div className="border border-slate-100 rounded-3xl overflow-hidden">
+                <div className="border border-slate-100 rounded-3xl overflow-hidden overflow-x-auto custom-scrollbar">
                   <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">
                     Recent well records (Top 50)
                   </div>
@@ -994,7 +994,7 @@ export function CombinationAnalysisView({
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Left Column: Data Table */}
-                  <div className="lg:col-span-2 border border-slate-100 rounded-3xl overflow-hidden">
+                  <div className="lg:col-span-2 border border-slate-100 rounded-3xl overflow-hidden overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left text-[11px] border-collapse">
                       <thead className="bg-[#e9eef7] text-slate-800 text-[10px] font-black border-b border-slate-200">
                         <tr>
@@ -1009,7 +1009,7 @@ export function CombinationAnalysisView({
                       <tbody className="divide-y divide-slate-100 font-bold text-slate-600 text-center">
                         {stateStats.map((st, idx) => {
                           const contam = st.total - st.clean;
-                          const perc = st.total > 0 ? ((contam / st.total) * 100).toFixed(1) : "0";
+                          const perc = st.total > 0 ? ((contam / st.total) * 100).toFixed(2) : "0.00";
                           return (
                             <tr key={st.state} className="hover:bg-slate-50/50">
                               <td className="p-2.5 border-r border-slate-100">{idx + 1}</td>
@@ -1035,8 +1035,8 @@ export function CombinationAnalysisView({
                           </td>
                           <td className="p-3">
                             {currentFilteredData.length > 0 
-                              ? ((currentFilteredData.filter(r => r.failCount > 0).length / currentFilteredData.length) * 100).toFixed(1) 
-                              : "0"}%
+                              ? ((currentFilteredData.filter(r => r.failCount > 0).length / currentFilteredData.length) * 100).toFixed(2) 
+                              : "0.00"}%
                           </td>
                         </tr>
                       </tfoot>
@@ -1068,7 +1068,7 @@ export function CombinationAnalysisView({
 
             {/* TAB 3: STATE BREAKDOWN */}
             {activeTab === "state" && (
-              <div className="border border-slate-100 rounded-3xl overflow-hidden">
+              <div className="border border-slate-100 rounded-3xl overflow-hidden overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left text-[11px] border-collapse animate-[fadeIn_0.2s_ease-out]">
                   <thead className="bg-slate-900 text-white text-[9px] font-black uppercase">
                     <tr>
@@ -1088,19 +1088,19 @@ export function CombinationAnalysisView({
                         <td className="p-3 font-black text-slate-800">{st.state}</td>
                         <td className="p-3 text-center bg-slate-50/50">{st.total}</td>
                         <td className="p-3 text-center text-emerald-600 bg-emerald-50/10">
-                          {st.clean} ({st.total > 0 ? ((st.clean / st.total) * 100).toFixed(0) : 0}%)
+                          {st.clean} ({st.total > 0 ? ((st.clean / st.total) * 100).toFixed(2) : "0.00"}%)
                         </td>
                         <td className="p-3 text-center text-amber-600 bg-amber-50/10">
-                          {st.one} ({st.total > 0 ? ((st.one / st.total) * 100).toFixed(0) : 0}%)
+                          {st.one} ({st.total > 0 ? ((st.one / st.total) * 100).toFixed(2) : "0.00"}%)
                         </td>
                         <td className="p-3 text-center text-orange-600 bg-orange-50/10">
-                          {st.two} ({st.total > 0 ? ((st.two / st.total) * 100).toFixed(0) : 0}%)
+                          {st.two} ({st.total > 0 ? ((st.two / st.total) * 100).toFixed(2) : "0.00"}%)
                         </td>
                         <td className="p-3 text-center text-rose-600 bg-rose-50/10">
-                          {st.three} ({st.total > 0 ? ((st.three / st.total) * 100).toFixed(0) : 0}%)
+                          {st.three} ({st.total > 0 ? ((st.three / st.total) * 100).toFixed(2) : "0.00"}%)
                         </td>
                         <td className="p-3 text-center text-red-600 bg-red-50/10">
-                          {st.fourPlus} ({st.total > 0 ? ((st.fourPlus / st.total) * 100).toFixed(0) : 0}%)
+                          {st.fourPlus} ({st.total > 0 ? ((st.fourPlus / st.total) * 100).toFixed(2) : "0.00"}%)
                         </td>
                         <td className="p-3 text-[10px] text-slate-400 truncate max-w-[150px]" title={Array.from(st.params).join(', ')}>
                           {Array.from(st.params).join(', ') || 'None'}
@@ -1114,7 +1114,7 @@ export function CombinationAnalysisView({
 
             {/* TAB 4: DISTRICT BREAKDOWN */}
             {activeTab === "district" && (
-              <div className="border border-slate-100 rounded-3xl overflow-hidden">
+              <div className="border border-slate-100 rounded-3xl overflow-hidden overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left text-[11px] border-collapse animate-[fadeIn_0.2s_ease-out]">
                   <thead className="bg-slate-900 text-white text-[9px] font-black uppercase">
                     <tr>
