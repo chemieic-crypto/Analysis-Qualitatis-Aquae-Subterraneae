@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { INDIA_BOUNDARY } from "../data/india_boundary";
-import { Plus, Minus, RotateCcw, Info, Globe, Calendar, Send, Table } from "lucide-react";
+import { Plus, Minus, RotateCcw, Info, Globe, Calendar, Send, Table, Edit2, Edit3, Search, Move, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, CornerDownLeft } from "lucide-react";
 import { ShapefileLayer } from "../types";
 import { getShortName } from "../utils/stateAbbreviations";
 import { PARAM_CONFIG } from "../data/config";
@@ -122,11 +122,11 @@ export default function GisChoroplethMap({
   isVisible,
 }: GisChoroplethMapProps) {
   // Local toast message state
-  const [localToast, setLocalToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [localToast, setLocalToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
-  const triggerToast = (msg: string, type: "success" | "error") => {
+  const triggerToast = (msg: string, type: "success" | "error" | "info" = "success") => {
     if (showToast) {
-      showToast(msg, type);
+      showToast(msg, type === "info" ? "success" : type);
     } else {
       setLocalToast({ message: msg, type });
       setTimeout(() => setLocalToast(null), 3000);
@@ -337,6 +337,14 @@ export default function GisChoroplethMap({
   const [stateFontStyle, setStateFontStyle] = useState<string>("bold");
   const [stateFontColor, setStateFontColor] = useState<string>("#1e293b");
 
+  // Sub-label states for (% of samples above permissible limit)
+  const [showExceedanceSubLabel, setShowExceedanceSubLabel] = useState<boolean>(true);
+  const [subLabelFontFamily, setSubLabelFontFamily] = useState<string>("Inter");
+  const [subLabelFontSize, setSubLabelFontSize] = useState<number>(8);
+  const [subLabelFontStyle, setSubLabelFontStyle] = useState<string>("normal");
+  const [subLabelFontColor, setSubLabelFontColor] = useState<string>("#475569");
+  const [subLabelFormat, setSubLabelFormat] = useState<string>("percent"); // 'percent', 'full', 'exceedance', 'short_limit'
+
   // New Title specific controls
   const [titleFontFamily, setTitleFontFamily] = useState<string>("Inter");
   const [titleFontSize, setTitleFontSize] = useState<number>(14);
@@ -382,9 +390,16 @@ export default function GisChoroplethMap({
   const sideBySide = seasonFilter === "both";
   const canvasPostRef = useRef<HTMLCanvasElement>(null);
 
-  // Tooltip state
+  // Tooltip & Label Position Repositioning States
   const [hoveredGroup, setHoveredGroup] = useState<GroupData | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
+  // Map Label Location Repositioning State (Allows moving any State/UT/District label location on the map area using mouse)
+  const [labelOffsets, setLabelOffsets] = useState<Record<string, { dx: number; dy: number }>>({});
+  const [isDraggingLabel, setIsDraggingLabel] = useState<string | null>(null);
+  const [hoveredLabelName, setHoveredLabelName] = useState<string | null>(null);
+  const dragLabelOffsetStart = useRef({ x: 0, y: 0, initialDx: 0, initialDy: 0 });
+  const renderedLabelPositionsRef = useRef<Map<string, { sx: number; sy: number; name: string }>>(new Map());
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -677,42 +692,70 @@ export default function GisChoroplethMap({
     return "#a855f7"; // Purple (Severe)
   };
 
-  // Projection coordinate helpers
+  // Projection coordinate helpers - Geospatial Equirectangular/Mercator with true aspect-ratio scaling
   const project = (lon: number, lat: number, width: number, height: number): [number, number] => {
     const { minLon, maxLon, minLat, maxLat } = mapBounds;
 
-    const spanLon = (maxLon - minLon) || 1e-6;
-    const spanLat = (maxLat - minLat) || 1e-6;
+    const midLon = (minLon + maxLon) / 2;
+    const midLat = (minLat + maxLat) / 2;
+    const cosLat = Math.cos((midLat * Math.PI) / 180) || 0.92;
 
-    // standard linear mapping inside bounds
-    const pctX = (lon - minLon) / spanLon;
-    const pctY = (lat - minLat) / spanLat;
+    const spanXDeg = (maxLon - minLon) * cosLat || 1e-6;
+    const spanYDeg = (maxLat - minLat) || 1e-6;
 
-    // Apply interactive zoom and pan
+    // Viewport inner area with padding for borders/labels
+    const padX = Math.min(18, width * 0.025);
+    const padY = Math.min(18, height * 0.025);
+    const availW = Math.max(10, width - padX * 2);
+    const availH = Math.max(10, height - padY * 2);
+
+    // Uniform spatial scale (pixels per degree of latitude/effective longitude)
+    const scaleX = availW / spanXDeg;
+    const scaleY = availH / spanYDeg;
+    const fitScale = Math.min(scaleX, scaleY);
+
     const midX = width / 2;
     const midY = height / 2;
 
-    const x = (pctX * width - midX) * zoom + midX + panX;
-    // Invert Y coordinate since canvas runs 0 top to height bottom
-    const y = ((1 - pctY) * height - midY) * zoom + midY + panY;
+    // Relative offset from map center
+    const screenX0 = midX + (lon - midLon) * cosLat * fitScale;
+    const screenY0 = midY - (lat - midLat) * fitScale;
+
+    // Apply interactive zoom and pan
+    const x = (screenX0 - midX) * zoom + midX + panX;
+    const y = (screenY0 - midY) * zoom + midY + panY;
 
     return [x, y];
   };
 
-  const unproject = (x: number, y: number, width: number, height: number) => {
+  const unproject = (x: number, y: number, width: number, height: number): [number, number] => {
     const { minLon, maxLon, minLat, maxLat } = mapBounds;
+
+    const midLon = (minLon + maxLon) / 2;
+    const midLat = (minLat + maxLat) / 2;
+    const cosLat = Math.cos((midLat * Math.PI) / 180) || 0.92;
+
+    const spanXDeg = (maxLon - minLon) * cosLat || 1e-6;
+    const spanYDeg = (maxLat - minLat) || 1e-6;
+
+    const padX = Math.min(18, width * 0.025);
+    const padY = Math.min(18, height * 0.025);
+    const availW = Math.max(10, width - padX * 2);
+    const availH = Math.max(10, height - padY * 2);
+
+    const fitScale = Math.min(availW / spanXDeg, availH / spanYDeg);
 
     const midX = width / 2;
     const midY = height / 2;
 
-    const basePctX = (x - panX - midX) / zoom + midX;
-    const basePctY = (y - panY - midY) / zoom + midY;
+    const screenX0 = (x - panX - midX) / zoom + midX;
+    const screenY0 = (y - panY - midY) / zoom + midY;
 
-    const pctX = basePctX / width;
-    const pctY = 1 - basePctY / height;
+    const dxDeg = (screenX0 - midX) / fitScale;
+    const dyDeg = (midY - screenY0) / fitScale;
 
-    const lon = pctX * (maxLon - minLon) + minLon;
-    const lat = pctY * (maxLat - minLat) + minLat;
+    const lon = midLon + dxDeg / cosLat;
+    const lat = midLat + dyDeg;
 
     return [lon, lat];
   };
@@ -827,7 +870,7 @@ export default function GisChoroplethMap({
 
   // A4 layout configurations
   const layoutSizes = useMemo(() => ({
-    default: { width: 600, height: 420, style: "w-full lg:w-2/3 h-[420px]" },
+    default: { width: 650, height: 500, style: "w-full lg:w-2/3 h-[500px]" },
     "a4-portrait": { width: 595, height: 842, style: "w-full max-w-[500px] aspect-[1/1.414] h-auto border border-slate-200 shadow-lg mx-auto" },
     "a4-landscape": { width: 842, height: 595, style: "w-full max-w-[750px] aspect-[1.414/1] h-auto border border-slate-200 shadow-lg mx-auto" },
   }), []);
@@ -851,6 +894,7 @@ export default function GisChoroplethMap({
 
     // Clear canvas - support transparent background
     drawnNames.clear();
+    renderedLabelPositionsRef.current.clear();
     if (transparentBackground) {
       ctx.clearRect(0, 0, width, height);
     } else {
@@ -863,22 +907,31 @@ export default function GisChoroplethMap({
       ctx.save();
       ctx.globalAlpha = basemapOpacity / 100;
 
+      // Calculate full canvas view lon/lat bounds to cover entire map canvas area without gaps
+      const [cMinLon, cMaxLat] = unproject(0, 0, width, height);
+      const [cMaxLon, cMinLat] = unproject(width, height, width, height);
+
+      const tileMinLon = Math.max(-180, Math.min(180, Math.min(cMinLon, cMaxLon) - 0.2));
+      const tileMaxLon = Math.max(-180, Math.min(180, Math.max(cMinLon, cMaxLon) + 0.2));
+      const tileMinLat = Math.max(-85, Math.min(85, Math.min(cMinLat, cMaxLat) - 0.2));
+      const tileMaxLat = Math.max(-85, Math.min(85, Math.max(cMinLat, cMaxLat) + 0.2));
+
       const spanLon = (mapBounds.maxLon - mapBounds.minLon) || 1e-6;
       let baseZ = Math.round(Math.log2(360 / spanLon)) + 2;
       let finalZoom = Math.max(1, Math.min(18, baseZ + Math.round(Math.log2(zoom))));
 
-      let xMin = Math.floor(lngToTileX(mapBounds.minLon, finalZoom));
-      let xMax = Math.floor(lngToTileX(mapBounds.maxLon, finalZoom));
-      let yMin = Math.floor(latToTileY(mapBounds.maxLat, finalZoom));
-      let yMax = Math.floor(latToTileY(mapBounds.minLat, finalZoom));
+      let xMin = Math.floor(lngToTileX(tileMinLon, finalZoom));
+      let xMax = Math.floor(lngToTileX(tileMaxLon, finalZoom));
+      let yMin = Math.floor(latToTileY(tileMaxLat, finalZoom));
+      let yMax = Math.floor(latToTileY(tileMinLat, finalZoom));
 
       // Limit maximum number of tiles to draw to avoid heavy loading and crash
-      while ((xMax - xMin + 1) * (yMax - yMin + 1) > 48 && finalZoom > 1) {
+      while ((xMax - xMin + 1) * (yMax - yMin + 1) > 80 && finalZoom > 1) {
         finalZoom--;
-        xMin = Math.floor(lngToTileX(mapBounds.minLon, finalZoom));
-        xMax = Math.floor(lngToTileX(mapBounds.maxLon, finalZoom));
-        yMin = Math.floor(latToTileY(mapBounds.maxLat, finalZoom));
-        yMax = Math.floor(latToTileY(mapBounds.minLat, finalZoom));
+        xMin = Math.floor(lngToTileX(tileMinLon, finalZoom));
+        xMax = Math.floor(lngToTileX(tileMaxLon, finalZoom));
+        yMin = Math.floor(latToTileY(tileMaxLat, finalZoom));
+        yMax = Math.floor(latToTileY(tileMinLat, finalZoom));
       }
 
       const getTileUrl = (tx: number, ty: number, tz: number) => {
@@ -1180,7 +1233,32 @@ export default function GisChoroplethMap({
                     ctx.fillStyle = stateFontColor || layer.labelColor || "#0f172a";
                     ctx.textAlign = "center";
                     ctx.textBaseline = "middle";
-                    ctx.fillText(labelText, sx, sy);
+                    const offset = labelOffsets[baseLabel] || labelOffsets[labelText] || { dx: 0, dy: 0 };
+                    const finalSx = sx + offset.dx;
+                    const finalSy = sy + offset.dy;
+                    ctx.fillText(labelText, finalSx, finalSy);
+
+                    // Draw sub-label (% of samples above permissible limit) if match found in gList
+                    if (showExceedanceSubLabel) {
+                      const match = gList.find((g) => g.name.toLowerCase() === baseLabel.toLowerCase() || g.name.toLowerCase() === labelText.toLowerCase());
+                      if (match) {
+                        ctx.font = `${subLabelFontStyle} ${subLabelFontSize}px ${subLabelFontFamily || "sans-serif"}`;
+                        ctx.fillStyle = subLabelFontColor;
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "top";
+                        let subText = `(${match.pctExceedance.toFixed(1)}%)`;
+                        if (subLabelFormat === "full") subText = `(${match.pctExceedance.toFixed(1)}% of samples above permissible limit)`;
+                        else if (subLabelFormat === "exceedance") subText = `(${match.pctExceedance.toFixed(1)}% Exceedance)`;
+                        else if (subLabelFormat === "short_limit") subText = `(${match.pctExceedance.toFixed(1)}% samples > limit)`;
+                        const subY = finalSy + Math.round((stateFontSize || layer.labelSize || 9) / 2) + 2;
+                        ctx.fillText(subText, finalSx, subY);
+                      }
+                    }
+
+                    renderedLabelPositionsRef.current.set(baseLabel.toLowerCase(), { sx: finalSx, sy: finalSy, name: baseLabel });
+                    if (labelText !== baseLabel) {
+                      renderedLabelPositionsRef.current.set(labelText.toLowerCase(), { sx: finalSx, sy: finalSy, name: baseLabel });
+                    }
                   }
                 }
               }
@@ -1509,7 +1587,7 @@ export default function GisChoroplethMap({
       ctx.restore();
     }
 
-    // Draw Scale Bar
+    // Draw Scale Bar (Lower Left Side)
     if (showScaleBar) {
       ctx.save();
       const sx = 20;
@@ -1566,23 +1644,49 @@ export default function GisChoroplethMap({
         if (useShortNames) {
           displayName = getShortName(displayName, reportingLevel, useShortNames);
         }
-        const shortName = displayName.length > 15 ? displayName.substring(0, 13) + ".." : displayName;
+        const labelText = displayName; // Full name up to 20+ characters, fully visible
         const labelLower = displayName.trim().toLowerCase();
         
         if (!drawnNames.has(labelLower)) {
           drawnNames.add(labelLower);
           ctx.save();
-          ctx.font = `${stateFontStyle} ${stateFontSize}px ${stateFontFamily}`;
+          
+          // 1. Main State / UT / District Name Label
+          ctx.font = `${stateFontStyle} ${stateFontSize}px ${stateFontFamily}, sans-serif`;
           ctx.fillStyle = stateFontColor;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(shortName, Math.round(sx), Math.round(sy));
+          const offset = labelOffsets[g.name] || labelOffsets[displayName] || { dx: 0, dy: 0 };
+          const finalSx = Math.round(sx + offset.dx);
+          const finalSy = Math.round(sy + offset.dy);
+          ctx.fillText(labelText, finalSx, finalSy);
+
+          // 2. Sub-label: (% of samples above permissible limit)
+          if (showExceedanceSubLabel) {
+            ctx.font = `${subLabelFontStyle} ${subLabelFontSize}px ${subLabelFontFamily}, sans-serif`;
+            ctx.fillStyle = subLabelFontColor;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+
+            let subText = `(${g.pctExceedance.toFixed(1)}%)`;
+            if (subLabelFormat === "full") subText = `(${g.pctExceedance.toFixed(1)}% of samples above permissible limit)`;
+            else if (subLabelFormat === "exceedance") subText = `(${g.pctExceedance.toFixed(1)}% Exceedance)`;
+            else if (subLabelFormat === "short_limit") subText = `(${g.pctExceedance.toFixed(1)}% samples > limit)`;
+
+            const subY = finalSy + Math.round(stateFontSize / 2) + 2;
+            ctx.fillText(subText, finalSx, subY);
+          }
+
           ctx.restore();
+          renderedLabelPositionsRef.current.set(g.name.toLowerCase(), { sx: finalSx, sy: finalSy, name: g.name });
+          if (displayName !== g.name) {
+            renderedLabelPositionsRef.current.set(displayName.toLowerCase(), { sx: finalSx, sy: finalSy, name: g.name });
+          }
         }
       });
     }
 
-    // Draw customizable map title & subtitle (Rule 5 & 8) - Centered & Draggable!
+    // Draw customizable map title & subtitle (Rule 5 & 8) - Centered & Draggable at upper side
     ctx.save();
     const tY = Math.round(titlePos.y);
     const titleX = titlePos.x === 20 ? Math.round(width / 2) : Math.round(titlePos.x);
@@ -1595,7 +1699,7 @@ export default function GisChoroplethMap({
     ctx.font = `${subtitleFontStyle} ${subtitleFontSize}px ${subtitleFontFamily}`;
     ctx.fillStyle = subtitleFontColor;
     ctx.textAlign = "center";
-    ctx.fillText(subtitleText, titleX, tY + Math.round(titleFontSize * 1.2));
+    ctx.fillText(subtitleText, titleX, tY + Math.round(titleFontSize * 1.1));
     ctx.restore();
 
     // Draw Customizable map legend with transparent/translucent background (Rule 4 & 6 & 8) - Draggable!
@@ -1757,10 +1861,17 @@ export default function GisChoroplethMap({
     titlePos,
     redrawTilesTrigger,
     nameOverrides,
+    labelOffsets,
     stateFontFamily,
     stateFontSize,
     stateFontStyle,
     stateFontColor,
+    showExceedanceSubLabel,
+    subLabelFontFamily,
+    subLabelFontSize,
+    subLabelFontStyle,
+    subLabelFontColor,
+    subLabelFormat,
     titleFontFamily,
     titleFontSize,
     titleFontStyle,
@@ -1791,6 +1902,22 @@ export default function GisChoroplethMap({
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
 
+    // 0. Check if clicked near a Map Label (to drag and replace its location on the map area using mouse)
+    for (const pos of renderedLabelPositionsRef.current.values()) {
+      const dist = Math.hypot(x - pos.sx, y - pos.sy);
+      if (dist <= 30) {
+        setIsDraggingLabel(pos.name);
+        const currentOff = labelOffsets[pos.name] || { dx: 0, dy: 0 };
+        dragLabelOffsetStart.current = {
+          x,
+          y,
+          initialDx: currentOff.dx,
+          initialDy: currentOff.dy,
+        };
+        return;
+      }
+    }
+
     // 1. Check if clicked near North Arrow (Compass)
     const compassX = northArrowPos.x === 550 ? (canvas.width / pixelRatio) - 40 : northArrowPos.x;
     const compassY = northArrowPos.y === 40 ? 50 : northArrowPos.y;
@@ -1810,11 +1937,12 @@ export default function GisChoroplethMap({
       return;
     }
 
-    // 3. Check if clicked near Title (bounds: titleX - 150 to titleX + 150, titlePos.y to titlePos.y + 35)
+    // 3. Check if clicked near Title
     const titleX = titlePos.x === 20 ? (canvas.width / pixelRatio) / 2 : titlePos.x;
-    if (x >= titleX - 150 && x <= titleX + 150 && y >= titlePos.y - 15 && y <= titlePos.y + 35) {
+    const titleY = titlePos.y === 30 ? 30 : titlePos.y;
+    if (x >= titleX - 150 && x <= titleX + 150 && y >= titleY - 20 && y <= titleY + 35) {
       setIsDraggingTitle(true);
-      dragElementStartOffset.current = { x: x - titleX, y: y - titlePos.y };
+      dragElementStartOffset.current = { x: x - titleX, y: y - titleY };
       return;
     }
 
@@ -1839,7 +1967,16 @@ export default function GisChoroplethMap({
     const width = canvas.width / pixelRatio;
     const height = canvas.height / pixelRatio;
 
-    if (isDraggingNorthArrow) {
+    if (isDraggingLabel) {
+      const deltaX = x - dragLabelOffsetStart.current.x;
+      const deltaY = y - dragLabelOffsetStart.current.y;
+      const newDx = Math.round(dragLabelOffsetStart.current.initialDx + deltaX);
+      const newDy = Math.round(dragLabelOffsetStart.current.initialDy + deltaY);
+      setLabelOffsets((prev) => ({
+        ...prev,
+        [isDraggingLabel]: { dx: newDx, dy: newDy },
+      }));
+    } else if (isDraggingNorthArrow) {
       setNorthArrowPos({
         x: Math.max(10, Math.min(width - 10, x - dragElementStartOffset.current.x)),
         y: Math.max(10, Math.min(height - 10, y - dragElementStartOffset.current.y))
@@ -1859,24 +1996,86 @@ export default function GisChoroplethMap({
       setPanX(e.clientX * scaleX - dragStart.x);
       setPanY(e.clientY * scaleY - dragStart.y);
     } else {
-      // Find nearest centroid in screen coordinates to trigger interactive tooltips
-      let nearest: GroupData | null = null;
-      let minDist = 35; // Maximum distance to trigger tooltip (in pixels)
-
-      groupList.forEach((g) => {
-        const [sx, sy] = project(g.centroidLon, g.centroidLat, canvas.width, canvas.height);
-        const dx = x - sx;
-        const dy = y - sy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < minDist) {
-          minDist = dist;
-          nearest = g;
+      // Check if mouse is near any map label to set move cursor
+      let nearLabelName: string | null = null;
+      for (const pos of renderedLabelPositionsRef.current.values()) {
+        if (Math.hypot(x - pos.sx, y - pos.sy) <= 30) {
+          nearLabelName = pos.name;
+          break;
         }
-      });
+      }
+      setHoveredLabelName(nearLabelName);
 
-      setHoveredGroup(nearest);
-      if (nearest) {
+      // Unproject screen coordinates to geographic coordinates
+      const [mouseLon, mouseLat] = unproject(x, y, width, height);
+
+      const activeLayers = (layers || []).filter((l) => l.visible && l.geoJson);
+      let foundGroup: GroupData | null = null;
+
+      // 1. Polygon hit-test: check if mouse is inside any GeoJSON shapefile feature
+      if (activeLayers.length > 0 && Number.isFinite(mouseLon) && Number.isFinite(mouseLat)) {
+        for (const layer of activeLayers) {
+          const features = layer.geoJson.features || (layer.geoJson.type === "Feature" ? [layer.geoJson] : []);
+          for (const f of features) {
+            if (f && f.geometry && isPointInFeature(mouseLon, mouseLat, f)) {
+              const matched = findGroupForFeature(f, groupList);
+              if (matched) {
+                foundGroup = matched;
+                break;
+              } else {
+                const featName = String(
+                  f.properties?.[layer.labelKey] ||
+                  f.properties?.STNAME ||
+                  f.properties?.DISTRICT ||
+                  f.properties?.District ||
+                  f.properties?.State_Name ||
+                  f.properties?.STATE ||
+                  f.properties?.NAME ||
+                  ""
+                ).trim();
+                if (featName) {
+                  foundGroup = {
+                    name: featName,
+                    centroidLon: mouseLon,
+                    centroidLat: mouseLat,
+                    totalSamples: 0,
+                    failCount: 0,
+                    pctExceedance: 0,
+                    avgValue: 0,
+                  };
+                  break;
+                }
+              }
+            }
+          }
+          if (foundGroup) break;
+        }
+      }
+
+      // 2. Fallback distance check: search centroids with generous 250px radius to locate state/district everywhere
+      if (!foundGroup && groupList.length > 0) {
+        let minDist = Infinity;
+        let nearest: GroupData | null = null;
+
+        groupList.forEach((g) => {
+          const [sx, sy] = project(g.centroidLon, g.centroidLat, width, height);
+          const dx = x - sx;
+          const dy = y - sy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < minDist) {
+            minDist = dist;
+            nearest = g;
+          }
+        });
+
+        if (nearest && minDist < 250) {
+          foundGroup = nearest;
+        }
+      }
+
+      setHoveredGroup(foundGroup);
+      if (foundGroup) {
         setTooltipPos({ x: cssX + 15, y: cssY + 15 });
       }
     }
@@ -1903,7 +2102,8 @@ export default function GisChoroplethMap({
     if (x >= lX && x <= lX + 160 && y >= lY && y <= lY + lH) return;
 
     const titleX = titlePos.x === 20 ? (canvas.width / pixelRatio) / 2 : titlePos.x;
-    if (x >= titleX - 150 && x <= titleX + 150 && y >= titlePos.y - 15 && y <= titlePos.y + 35) return;
+    const titleY = titlePos.y === 30 ? 30 : titlePos.y;
+    if (x >= titleX - 150 && x <= titleX + 150 && y >= titleY - 20 && y <= titleY + 35) return;
 
     // 2. Unproject screen click to geographic lon/lat
     const [lon, lat] = unproject(x, y, canvas.width, canvas.height);
@@ -1926,7 +2126,21 @@ export default function GisChoroplethMap({
     }
 
     if (clickedFeature && clickedLayer) {
-      const originalName = String(clickedFeature.properties?.[clickedLayer.labelKey] || "");
+      const isPostCanvas = sideBySide && canvas === canvasPostRef.current;
+      const gList = isPostCanvas ? groupListPost : (sideBySide ? groupListPre : groupList);
+      const matchedG = findGroupForFeature(clickedFeature, gList);
+      const featPropName = String(
+        clickedFeature.properties?.[clickedLayer.labelKey] ||
+        clickedFeature.properties?.STNAME ||
+        clickedFeature.properties?.DISTRICT ||
+        clickedFeature.properties?.District ||
+        clickedFeature.properties?.State_Name ||
+        clickedFeature.properties?.STATE ||
+        clickedFeature.properties?.NAME ||
+        ""
+      ).trim();
+
+      const originalName = matchedG ? matchedG.name : (featPropName || "");
       if (originalName) {
         setRenamingFeature({
           feature: clickedFeature,
@@ -1937,11 +2151,11 @@ export default function GisChoroplethMap({
         setNewNameInput(nameOverrides[originalName] || originalName);
       }
     } else {
-      // Fallback: Check if clicked near any of the centroids in gList
+      // Fallback: Check if clicked near any of the centroids or hoveredGroup
       const isPostCanvas = sideBySide && canvas === canvasPostRef.current;
       const gList = isPostCanvas ? groupListPost : (sideBySide ? groupListPre : groupList);
-      let closestG: GroupData | null = null;
-      let minDistance = 25; // Click tolerance in pixels
+      let closestG: GroupData | null = hoveredGroup;
+      let minDistance = 120; // Expanded click tolerance in pixels for easy mouse replacement
 
       gList.forEach((g) => {
         const [sx, sy] = project(g.centroidLon, g.centroidLat, canvas.width, canvas.height);
@@ -1966,6 +2180,10 @@ export default function GisChoroplethMap({
   };
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDraggingLabel) {
+      triggerToast(`Location of label "${isDraggingLabel}" updated on map!`, "success");
+      setIsDraggingLabel(null);
+    }
     setIsDragging(false);
     setIsDraggingNorthArrow(false);
     setIsDraggingLegend(false);
@@ -2486,7 +2704,13 @@ export default function GisChoroplethMap({
               <div className="p-3 border-t border-slate-200/50 space-y-4 max-h-[300px] overflow-y-auto">
                 {/* 1. State Name Labels */}
                 <div className="space-y-1.5 pb-2.5 border-b border-slate-200/40">
-                  <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">State Name Labels</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black uppercase text-indigo-900 tracking-wider block">State / District Name Labels</span>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input type="checkbox" checked={showRegionNames} onChange={(e) => setShowRegionNames(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-2.5 h-2.5" />
+                      <span className="text-[9px] font-bold text-slate-600">Show Labels</span>
+                    </label>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-0.5">
                       <label className="text-[8px] font-bold text-slate-500">Font Family</label>
@@ -2500,19 +2724,16 @@ export default function GisChoroplethMap({
                         <option value="JetBrains Mono">JetBrains Mono</option>
                         <option value="Playfair Display">Playfair Display</option>
                         <option value="Georgia">Georgia</option>
+                        <option value="Arial">Arial</option>
                         <option value="sans-serif">Sans-Serif</option>
                       </select>
                     </div>
                     <div className="space-y-0.5">
-                    <label className="flex items-center gap-1.5 cursor-pointer mt-1">
-                      <input type="checkbox" checked={showRegionNames} onChange={(e) => setShowRegionNames(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-2.5 h-2.5" />
-                      <span className="text-[9px] font-bold text-slate-600">Master Label Toggle</span>
-                    </label>
-                      <label className="text-[8px] font-bold text-slate-500 mt-1 block">Font Size</label>
+                      <label className="text-[8px] font-bold text-slate-500 block">Font Size (px)</label>
                       <input
                         type="number"
                         min="6"
-                        max="24"
+                        max="28"
                         value={stateFontSize}
                         onChange={(e) => setStateFontSize(parseInt(e.target.value) || 10)}
                         className="w-full text-[9px] font-bold p-1 bg-white border border-slate-200 rounded"
@@ -2549,6 +2770,94 @@ export default function GisChoroplethMap({
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* 1b. Sub-label (% of samples above permissible limit) */}
+                <div className="space-y-1.5 pb-2.5 border-b border-slate-200/40 bg-indigo-50/40 p-2 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black uppercase text-indigo-900 tracking-wider block">Sub-Label (% Above Limit)</span>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input type="checkbox" checked={showExceedanceSubLabel} onChange={(e) => setShowExceedanceSubLabel(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-2.5 h-2.5" />
+                      <span className="text-[9px] font-bold text-indigo-700">Show Sub-Label</span>
+                    </label>
+                  </div>
+                  {showExceedanceSubLabel && (
+                    <div className="space-y-2 pt-1">
+                      <div className="space-y-0.5">
+                        <label className="text-[8px] font-bold text-slate-500">Label Format</label>
+                        <select
+                          value={subLabelFormat}
+                          onChange={(e) => setSubLabelFormat(e.target.value)}
+                          className="w-full text-[9px] font-bold p-1 bg-white border border-slate-200 rounded"
+                        >
+                          <option value="percent">(X%) - Percentage Only (Default)</option>
+                          <option value="full">(% of samples above permissible limit)</option>
+                          <option value="exceedance">(% Exceedance)</option>
+                          <option value="short_limit">(% samples &gt; limit)</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-0.5">
+                          <label className="text-[8px] font-bold text-slate-500">Font Family</label>
+                          <select
+                            value={subLabelFontFamily}
+                            onChange={(e) => setSubLabelFontFamily(e.target.value)}
+                            className="w-full text-[9px] font-bold p-1 bg-white border border-slate-200 rounded"
+                          >
+                            <option value="Inter">Inter</option>
+                            <option value="Space Grotesk">Space Grotesk</option>
+                            <option value="JetBrains Mono">JetBrains Mono</option>
+                            <option value="Playfair Display">Playfair Display</option>
+                            <option value="Georgia">Georgia</option>
+                            <option value="Arial">Arial</option>
+                            <option value="sans-serif">Sans-Serif</option>
+                          </select>
+                        </div>
+                        <div className="space-y-0.5">
+                          <label className="text-[8px] font-bold text-slate-500">Font Size (px)</label>
+                          <input
+                            type="number"
+                            min="6"
+                            max="22"
+                            value={subLabelFontSize}
+                            onChange={(e) => setSubLabelFontSize(parseInt(e.target.value) || 8)}
+                            className="w-full text-[9px] font-bold p-1 bg-white border border-slate-200 rounded"
+                          />
+                        </div>
+                        <div className="space-y-0.5">
+                          <label className="text-[8px] font-bold text-slate-500">Font Style</label>
+                          <select
+                            value={subLabelFontStyle}
+                            onChange={(e) => setSubLabelFontStyle(e.target.value)}
+                            className="w-full text-[9px] font-bold p-1 bg-white border border-slate-200 rounded"
+                          >
+                            <option value="normal">Normal</option>
+                            <option value="bold">Bold</option>
+                            <option value="italic">Italic</option>
+                            <option value="bold italic">Bold Italic</option>
+                          </select>
+                        </div>
+                        <div className="space-y-0.5">
+                          <label className="text-[8px] font-bold text-slate-500">Font Color</label>
+                          <div className="flex gap-1">
+                            <input
+                              type="color"
+                              value={subLabelFontColor}
+                              onChange={(e) => setSubLabelFontColor(e.target.value)}
+                              className="w-5 h-5 p-0 border-0 cursor-pointer bg-transparent rounded shrink-0"
+                            />
+                            <input
+                              type="text"
+                              value={subLabelFontColor}
+                              onChange={(e) => setSubLabelFontColor(e.target.value)}
+                              className="w-full text-[8px] font-mono p-0.5 bg-white border border-slate-200 rounded uppercase font-bold"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 2. Map Title */}
@@ -2955,6 +3264,11 @@ export default function GisChoroplethMap({
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
+              onDoubleClick={(e) => handleCanvasClickEvent(e)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                handleCanvasClickEvent(e);
+              }}
               className={`block bg-transparent pointer-events-auto mx-auto ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
               style={{
                 width: `${currentLayout.width}px`,
@@ -2975,6 +3289,11 @@ export default function GisChoroplethMap({
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
+                onDoubleClick={(e) => handleCanvasClickEvent(e)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  handleCanvasClickEvent(e);
+                }}
                 className={`block bg-transparent pointer-events-auto mx-auto ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
                 style={{
                   width: `${currentLayout.width}px`,
@@ -2990,14 +3309,33 @@ export default function GisChoroplethMap({
           {/* Hover Information Tooltip */}
           {hoveredGroup && (
             <div
-              className="absolute z-20 pointer-events-none bg-white/95 backdrop-blur border border-indigo-100 p-3 rounded-xl shadow-xl max-w-xs transition-all duration-75 text-xs text-slate-700 font-medium"
+              className="absolute z-20 pointer-events-auto bg-white/95 backdrop-blur border border-indigo-100 p-3 rounded-2xl shadow-xl max-w-xs transition-all duration-75 text-xs text-slate-700 font-medium select-none"
               style={{ left: tooltipPos.x, top: tooltipPos.y }}
             >
-              <div className="border-b border-slate-100 pb-1.5 mb-2">
-                <span className="text-[10px] font-black text-indigo-500 uppercase tracking-wider block">
-                  {reportingLevel} Center
-                </span>
-                <strong className="text-slate-800 text-sm font-extrabold">{nameOverrides[hoveredGroup.name] || hoveredGroup.name}</strong>
+              <div className="border-b border-slate-100 pb-1.5 mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-black text-indigo-500 uppercase tracking-wider block">
+                    {reportingLevel} Center
+                  </span>
+                  <strong className="text-slate-800 text-sm font-extrabold">{nameOverrides[hoveredGroup.name] || hoveredGroup.name}</strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenamingFeature({
+                      feature: null,
+                      layer: null,
+                      originalName: hoveredGroup.name,
+                      currentName: nameOverrides[hoveredGroup.name] || hoveredGroup.name,
+                    });
+                    setNewNameInput(nameOverrides[hoveredGroup.name] || hoveredGroup.name);
+                  }}
+                  className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-all border border-indigo-200/60 shadow-2xs cursor-pointer shrink-0"
+                  title={`Click to Replace Name of ${nameOverrides[hoveredGroup.name] || hoveredGroup.name}`}
+                >
+                  <Edit2 className="w-3.5 h-3.5 text-indigo-600" />
+                </button>
               </div>
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center gap-6">
@@ -3030,6 +3368,24 @@ export default function GisChoroplethMap({
                   </span>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRenamingFeature({
+                    feature: null,
+                    layer: null,
+                    originalName: hoveredGroup.name,
+                    currentName: nameOverrides[hoveredGroup.name] || hoveredGroup.name,
+                  });
+                  setNewNameInput(nameOverrides[hoveredGroup.name] || hoveredGroup.name);
+                }}
+                className="w-full mt-2.5 py-1.5 px-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-extrabold rounded-xl flex items-center justify-center gap-1.5 text-[11px] transition-all shadow-xs cursor-pointer"
+              >
+                <Move className="w-3 h-3 text-indigo-200" />
+                Move / Reposition Label Location on Map
+              </button>
             </div>
           )}
         </div>
@@ -3115,81 +3471,249 @@ export default function GisChoroplethMap({
 
       {renamingFeature && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white/95 backdrop-blur border border-indigo-100 rounded-3xl p-6 shadow-2xl max-w-sm w-full space-y-4">
-            <div className="space-y-1">
-              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-wider block">
-                RENAME ADMINISTRATIVE CENTER
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newNameInput.trim() && newNameInput.trim() !== renamingFeature.originalName) {
+                setNameOverrides((prev) => ({
+                  ...prev,
+                  [renamingFeature.originalName]: newNameInput.trim(),
+                }));
+              }
+              triggerToast(`Label settings for ${renamingFeature.originalName} saved!`, "success");
+              setRenamingFeature(null);
+            }}
+            className="bg-white/95 backdrop-blur border border-indigo-100 rounded-3xl p-6 shadow-2xl max-w-md w-full space-y-4 select-none"
+          >
+            <div className="space-y-1 border-b border-slate-100 pb-3">
+              <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                <Move className="w-3.5 h-3.5 text-indigo-500" />
+                REPOSITION MAP LABEL LOCATION
               </span>
               <h3 className="text-base font-black text-slate-800 leading-tight">
-                Replace Display Name
+                Move Label Position on Map
               </h3>
-              <p className="text-xs text-slate-400 font-medium leading-relaxed">
-                You can replace or override the display name of this {reportingLevel} on the Choropleth map.
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                You can click and drag any label directly on the map area using your mouse, or use the nudge controls below.
               </p>
             </div>
 
-            <div className="space-y-3 pt-2">
-              <div className="space-y-1 text-xs">
-                <span className="font-bold text-slate-400 block">Original Attribute Name</span>
-                <span className="font-extrabold text-slate-700 bg-slate-100/80 px-2 py-1 rounded-lg inline-block border border-slate-200/40 font-mono">
-                  {renamingFeature.originalName}
-                </span>
+            <div className="space-y-3">
+              {/* Region Selector Dropdown */}
+              {groupList.length > 0 && (
+                <div className="space-y-1 text-xs">
+                  <label className="font-bold text-slate-600 block">Select Region on Map</label>
+                  <select
+                    value={renamingFeature.originalName}
+                    onChange={(e) => {
+                      const selName = e.target.value;
+                      setRenamingFeature({
+                        feature: null,
+                        layer: null,
+                        originalName: selName,
+                        currentName: nameOverrides[selName] || selName,
+                      });
+                      setNewNameInput(nameOverrides[selName] || selName);
+                    }}
+                    className="w-full text-xs font-bold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none text-slate-800 cursor-pointer"
+                  >
+                    {groupList.map((g) => (
+                      <option key={g.name} value={g.name}>
+                        {g.name} {labelOffsets[g.name] ? `(Moved: dx=${labelOffsets[g.name].dx}, dy=${labelOffsets[g.name].dy})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Mouse Drag Banner Tip */}
+              <div className="bg-indigo-50/80 border border-indigo-100/80 p-2.5 rounded-xl text-[11px] text-indigo-900 font-semibold flex items-center gap-2">
+                <Move className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span><strong>Direct Mouse Control:</strong> Simply click and drag the label text on the map area with your mouse!</span>
               </div>
 
-              <div className="space-y-1 text-xs">
-                <label className="font-bold text-slate-500 block">New Display Name</label>
+              {/* D-Pad Nudge Buttons */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 block">Directional Nudge Position</label>
+                <div className="flex items-center justify-center gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/60">
+                  <div className="grid grid-cols-3 gap-1.5 w-36">
+                    <div />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = labelOffsets[renamingFeature.originalName] || { dx: 0, dy: 0 };
+                        setLabelOffsets((prev) => ({ ...prev, [renamingFeature.originalName]: { ...cur, dy: cur.dy - 10 } }));
+                      }}
+                      className="p-2 bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="Nudge Up 10px"
+                    >
+                      <ArrowUp className="w-3.5 h-3.5 text-indigo-600" />
+                    </button>
+                    <div />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = labelOffsets[renamingFeature.originalName] || { dx: 0, dy: 0 };
+                        setLabelOffsets((prev) => ({ ...prev, [renamingFeature.originalName]: { ...cur, dx: cur.dx - 10 } }));
+                      }}
+                      className="p-2 bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="Nudge Left 10px"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5 text-indigo-600" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLabelOffsets((prev) => {
+                          const copy = { ...prev };
+                          delete copy[renamingFeature.originalName];
+                          return copy;
+                        });
+                        triggerToast(`Reset label position for ${renamingFeature.originalName}`, "info");
+                      }}
+                      className="p-2 bg-slate-200 hover:bg-rose-100 border border-slate-300 text-slate-700 hover:text-rose-700 rounded-lg flex items-center justify-center transition-all cursor-pointer text-[9px] font-black uppercase"
+                      title="Reset Position"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = labelOffsets[renamingFeature.originalName] || { dx: 0, dy: 0 };
+                        setLabelOffsets((prev) => ({ ...prev, [renamingFeature.originalName]: { ...cur, dx: cur.dx + 10 } }));
+                      }}
+                      className="p-2 bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="Nudge Right 10px"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+                    </button>
+
+                    <div />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = labelOffsets[renamingFeature.originalName] || { dx: 0, dy: 0 };
+                        setLabelOffsets((prev) => ({ ...prev, [renamingFeature.originalName]: { ...cur, dy: cur.dy + 10 } }));
+                      }}
+                      className="p-2 bg-white border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="Nudge Down 10px"
+                    >
+                      <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                    </button>
+                    <div />
+                  </div>
+                </div>
+              </div>
+
+              {/* X and Y Sliders */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <label className="font-bold text-slate-600">Horizontal Shift (X)</label>
+                    <span className="font-mono text-indigo-600 font-extrabold">
+                      {(labelOffsets[renamingFeature.originalName]?.dx || 0)}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-200"
+                    max="200"
+                    value={labelOffsets[renamingFeature.originalName]?.dx || 0}
+                    onChange={(e) => {
+                      const dx = parseInt(e.target.value) || 0;
+                      const cur = labelOffsets[renamingFeature.originalName] || { dx: 0, dy: 0 };
+                      setLabelOffsets((prev) => ({ ...prev, [renamingFeature.originalName]: { ...cur, dx } }));
+                    }}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <label className="font-bold text-slate-600">Vertical Shift (Y)</label>
+                    <span className="font-mono text-indigo-600 font-extrabold">
+                      {(labelOffsets[renamingFeature.originalName]?.dy || 0)}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-200"
+                    max="200"
+                    value={labelOffsets[renamingFeature.originalName]?.dy || 0}
+                    onChange={(e) => {
+                      const dy = parseInt(e.target.value) || 0;
+                      const cur = labelOffsets[renamingFeature.originalName] || { dx: 0, dy: 0 };
+                      setLabelOffsets((prev) => ({ ...prev, [renamingFeature.originalName]: { ...cur, dy } }));
+                    }}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Optional Text Rename Input */}
+              <div className="space-y-1 text-xs pt-1 border-t border-slate-100">
+                <label className="font-bold text-slate-500 block">Edit Display Text (Optional)</label>
                 <input
                   type="text"
                   value={newNameInput}
                   onChange={(e) => setNewNameInput(e.target.value)}
                   placeholder={renamingFeature.originalName}
-                  className="w-full text-xs font-semibold p-3 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-slate-800"
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl focus:outline-none transition-all text-slate-800"
                 />
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2 text-xs font-bold">
+            <div className="flex flex-wrap gap-2 pt-2 text-xs font-bold">
               <button
-                type="button"
-                onClick={() => {
-                  setNameOverrides((prev) => ({
-                    ...prev,
-                    [renamingFeature.originalName]: newNameInput.trim(),
-                  }));
-                  setRenamingFeature(null);
-                  triggerToast("Display name updated successfully!", "success");
-                }}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100 transition-all"
+                type="submit"
+                className="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100 transition-all cursor-pointer"
               >
-                Apply Override
+                Done
               </button>
-              {nameOverrides[renamingFeature.originalName] && (
+              {labelOffsets[renamingFeature.originalName] && (
                 <button
                   type="button"
                   onClick={() => {
-                    setNameOverrides((prev) => {
+                    setLabelOffsets((prev) => {
                       const updated = { ...prev };
                       delete updated[renamingFeature.originalName];
                       return updated;
                     });
-                    setRenamingFeature(null);
-                    triggerToast("Name reset to default.", "success");
+                    triggerToast(`Label position reset for ${renamingFeature.originalName}`, "info");
                   }}
-                  className="py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-all"
-                  title="Reset to default name"
+                  className="py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-all cursor-pointer"
                 >
-                  Reset Default
+                  Reset Location
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setRenamingFeature(null)}
-                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all"
+                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all cursor-pointer"
               >
-                Cancel
+                Close
               </button>
             </div>
-          </div>
+
+            {Object.keys(labelOffsets).length > 0 && (
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400">
+                  {Object.keys(labelOffsets).length} label position override(s) active
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLabelOffsets({});
+                    triggerToast("All label positions reset to default.", "info");
+                  }}
+                  className="text-[10px] font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                >
+                  Reset All Label Positions
+                </button>
+              </div>
+            )}
+          </form>
         </div>
       )}
 

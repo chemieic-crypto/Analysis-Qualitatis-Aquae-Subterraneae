@@ -1025,8 +1025,8 @@ export default function DetailedView({
       },
       plotOptions: {
         pie: {
-          size: "55%", // Reduced donut size by 30% (from 80% to 55%) to leave ample space for enlarged labels
-          innerSize: "38%",
+          size: "82%", // Increased donut size by 50% (from 55% to 82%)
+          innerSize: "46%", // Decreased donut hole size by 20% (from 57% to 46%)
           depth: 40,
           borderWidth: 2,
           borderColor: chartTheme === "theme-dark" ? "#1e293b" : "#ffffff",
@@ -2113,8 +2113,8 @@ export default function DetailedView({
       },
       plotOptions: {
         pie: {
-          size: "55%", // Reduced donut size by 30% (from 80% to 55%) to leave space for 100% enlarged labels
-          innerSize: "38%",
+          size: "82%", // Increased donut size by 50% (from 55% to 82%)
+          innerSize: "46%", // Decreased donut hole size by 20% (from 57% to 46%)
           depth: 50,
           borderWidth: 2,
           borderColor: chartTheme === "theme-dark" ? "#1e293b" : "#ffffff",
@@ -2325,8 +2325,8 @@ export default function DetailedView({
       },
       plotOptions: {
         pie: {
-          size: "55%", // Reduced donut size by 30% (from 80% to 55%)
-          innerSize: "38%",
+          size: "82%", // Increased donut size by 50% (from 55% to 82%)
+          innerSize: "46%", // Decreased donut hole size by 20% (from 57% to 46%)
           depth: 50,
           borderWidth: 2,
           borderColor: "transparent",

@@ -692,8 +692,8 @@ export function buildColumnsChartOptions(title: string, categories: string[], da
 /**
  * Builds standard 3D Pie / Donut chart options.
  */
-export function buildDonutChartOptions(title: string, dataPoints: any[], size = "55%", isDarkTheme = false): Highcharts.Options {
-  const finalSize = size; // Reduced donut size by 30% (from 80% to 55%) to give space for 100% enlarged labels
+export function buildDonutChartOptions(title: string, dataPoints: any[], size = "82%", isDarkTheme = false): Highcharts.Options {
+  const finalSize = size; // Increased donut size by 50%
   const textColor = isDarkTheme ? "#f8fafc" : "#1e293b";
   const titleFontSize = "24pt"; // Increased by 100% (doubled from 12pt to 24pt)
   const labelFontSize = "22pt"; // Increased by 100% (doubled from 11pt to 22pt)
@@ -729,7 +729,7 @@ export function buildDonutChartOptions(title: string, dataPoints: any[], size = 
     },
     plotOptions: {
       pie: {
-        innerSize: "38%", // Reduced proportionally with donut outer size
+        innerSize: "46%", // Decreased donut hole size by 20%
         depth: 60,
         size: finalSize, // 55% size (30% reduction)
         borderWidth: 2,   // Crisp boundaries dividing 3D slices beautifully
